@@ -1,106 +1,34 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="993" height="842" viewBox="0 0 993 842" style="max-width:100%;height:auto" font-family="ui-sans-serif, -apple-system, 'Segoe UI', 'Microsoft YaHei', sans-serif">
-<rect width="993" height="842" fill="#0b0f14"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="708" height="298" viewBox="0 0 708 298" style="max-width:100%;height:auto" font-family="ui-sans-serif, -apple-system, 'Segoe UI', 'Microsoft YaHei', sans-serif">
+<rect width="708" height="298" fill="#0b0f14"/>
 <text x="30" y="20" fill="#8b98a5" font-size="12.5" letter-spacing="0.08em">HOLDEM-ROOM 提交图</text>
 <path d="M 30 30 C 30 45.3, 30 48.7, 30 64" fill="none" stroke="#2f81f7" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
 <path d="M 30 64 C 30 79.3, 30 82.7, 30 98" fill="none" stroke="#2f81f7" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
 <path d="M 30 98 C 30 113.3, 30 116.7, 30 132" fill="none" stroke="#2f81f7" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
 <path d="M 30 132 C 30 147.3, 30 150.7, 30 166" fill="none" stroke="#2f81f7" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
 <path d="M 30 166 C 30 181.3, 30 184.7, 30 200" fill="none" stroke="#2f81f7" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
-<path d="M 30 200 C 30 230.6, 30 237.4, 30 268" fill="none" stroke="#2f81f7" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
-<path d="M 30 200 C 30 215.3, 56 218.7, 56 234" fill="none" stroke="#2f81f7" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
-<path d="M 56 234 C 56 249.3, 30 252.7, 30 268" fill="none" stroke="#3fb950" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
-<path d="M 30 268 C 30 298.6, 30 305.4, 30 336" fill="none" stroke="#2f81f7" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
-<path d="M 30 268 C 30 283.3, 82 286.7, 82 302" fill="none" stroke="#2f81f7" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
-<path d="M 82 302 C 82 317.3, 30 320.7, 30 336" fill="none" stroke="#e3b341" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
-<path d="M 30 336 C 30 351.3, 30 354.7, 30 370" fill="none" stroke="#2f81f7" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
-<path d="M 30 370 C 30 385.3, 30 388.7, 30 404" fill="none" stroke="#2f81f7" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
-<path d="M 30 404 C 30 419.3, 30 422.7, 30 438" fill="none" stroke="#2f81f7" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
-<path d="M 30 438 C 30 453.3, 30 456.7, 30 472" fill="none" stroke="#2f81f7" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
-<path d="M 30 472 C 30 487.3, 30 490.7, 30 506" fill="none" stroke="#2f81f7" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
-<path d="M 30 506 C 30 521.3, 30 524.7, 30 540" fill="none" stroke="#2f81f7" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
-<path d="M 30 540 C 30 555.3, 30 558.7, 30 574" fill="none" stroke="#2f81f7" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
-<path d="M 30 574 C 30 589.3, 30 592.7, 30 608" fill="none" stroke="#2f81f7" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
-<path d="M 30 608 C 30 623.3, 30 626.7, 30 642" fill="none" stroke="#2f81f7" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
-<path d="M 30 642 C 30 657.3, 30 660.7, 30 676" fill="none" stroke="#2f81f7" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
-<path d="M 30 676 C 30 691.3, 30 694.7, 30 710" fill="none" stroke="#2f81f7" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
-<path d="M 30 710 C 30 725.3, 30 728.7, 30 744" fill="none" stroke="#2f81f7" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
-<path d="M 30 744 C 30 759.3, 30 762.7, 30 778" fill="none" stroke="#2f81f7" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+<path d="M 30 200 C 30 215.3, 30 218.7, 30 234" fill="none" stroke="#2f81f7" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
 <circle cx="30" cy="30" r="5.5" fill="#2f81f7" stroke="#0b0f14" stroke-width="2"/>
-<rect x="126" y="20" width="88.4" height="20" rx="10" fill="#e3b341" opacity="0.18"/>
-<rect x="126" y="20" width="88.4" height="20" rx="10" fill="none" stroke="#e3b341" stroke-width="1.2"/>
-<text x="134" y="34" fill="#e3b341" font-size="12" font-weight="600">HEAD → main</text>
-<text x="230.39999999999998" y="34" fill="#6e7681" font-size="12" font-family="ui-monospace, Consolas, monospace">ea9a176</text>
-<text x="283.59999999999997" y="34" fill="#e6edf3" font-size="13">feat: 跑道形牌桌、金额加 \$、每人自选买入、机器人自动买入可关</text>
+<rect x="74" y="20" width="88.4" height="20" rx="10" fill="#e3b341" opacity="0.18"/>
+<rect x="74" y="20" width="88.4" height="20" rx="10" fill="none" stroke="#e3b341" stroke-width="1.2"/>
+<text x="82" y="34" fill="#e3b341" font-size="12" font-weight="600">HEAD → main</text>
+<text x="178.39999999999998" y="34" fill="#6e7681" font-size="12" font-family="ui-monospace, Consolas, monospace">0b8b7c8</text>
+<text x="231.59999999999997" y="34" fill="#e6edf3" font-size="13">docs: README、公网部署说明与界面截图</text>
 <circle cx="30" cy="64" r="5.5" fill="#2f81f7" stroke="#0b0f14" stroke-width="2"/>
-<text x="136" y="68" fill="#6e7681" font-size="12" font-family="ui-monospace, Consolas, monospace">ee4efb0</text>
-<text x="189.2" y="68" fill="#e6edf3" font-size="13">feat(web): 牌桌随窗口等比缩放，下注改成金币，筹码换行显示并改用英文人格名</text>
+<text x="84" y="68" fill="#6e7681" font-size="12" font-family="ui-monospace, Consolas, monospace">a592eef</text>
+<text x="137.2" y="68" fill="#e6edf3" font-size="13">chore(scripts): 演示、对局、冒烟、基准与提交图工具</text>
 <circle cx="30" cy="98" r="5.5" fill="#2f81f7" stroke="#0b0f14" stroke-width="2"/>
-<text x="136" y="102" fill="#6e7681" font-size="12" font-family="ui-monospace, Consolas, monospace">a6032f9</text>
-<text x="189.2" y="102" fill="#e6edf3" font-size="13">feat(launchers): 双击就能以独立窗口打开牌桌和提交图</text>
+<text x="84" y="102" fill="#6e7681" font-size="12" font-family="ui-monospace, Consolas, monospace">0f4d0cb</text>
+<text x="137.2" y="102" fill="#e6edf3" font-size="13">feat(web): React 牌桌界面：跑道形桌面、自适应缩放、金币下注、翻牌动画</text>
 <circle cx="30" cy="132" r="5.5" fill="#2f81f7" stroke="#0b0f14" stroke-width="2"/>
-<text x="136" y="136" fill="#6e7681" font-size="12" font-family="ui-monospace, Consolas, monospace">0e0a2db</text>
-<text x="189.2" y="136" fill="#e6edf3" font-size="13">docs: 更新提交图</text>
+<text x="84" y="136" fill="#6e7681" font-size="12" font-family="ui-monospace, Consolas, monospace">e1c40cc</text>
+<text x="137.2" y="136" fill="#e6edf3" font-size="13">feat(server): 房间与协议、按观众过滤底牌、NPC 人格与大模型决策层</text>
 <circle cx="30" cy="166" r="5.5" fill="#2f81f7" stroke="#0b0f14" stroke-width="2"/>
-<text x="136" y="170" fill="#6e7681" font-size="12" font-family="ui-monospace, Consolas, monospace">a196738</text>
-<text x="189.2" y="170" fill="#e6edf3" font-size="13">fix(scripts): 提交图兼容 PowerShell 的 UTF-16 日志，并按中日韩字宽计算画布</text>
+<text x="84" y="170" fill="#6e7681" font-size="12" font-family="ui-monospace, Consolas, monospace">289bfa8</text>
+<text x="137.2" y="170" fill="#e6edf3" font-size="13">feat(shared): 面向人的显示格式化（十显示成 10，牌型名称中文化）</text>
 <circle cx="30" cy="200" r="5.5" fill="#2f81f7" stroke="#0b0f14" stroke-width="2"/>
-<text x="136" y="204" fill="#6e7681" font-size="12" font-family="ui-monospace, Consolas, monospace">38c0002</text>
-<text x="189.2" y="204" fill="#e6edf3" font-size="13">Merge branch 'chore/git-graph-tooling'</text>
-<circle cx="56" cy="234" r="5.5" fill="#3fb950" stroke="#0b0f14" stroke-width="2"/>
-<rect x="126" y="224" width="165.2" height="20" rx="10" fill="#6e7681" opacity="0.18"/>
-<rect x="126" y="224" width="165.2" height="20" rx="10" fill="none" stroke="#6e7681" stroke-width="1.2"/>
-<text x="134" y="238" fill="#6e7681" font-size="12" font-weight="600">chore/git-graph-tooling</text>
-<text x="307.20000000000005" y="238" fill="#6e7681" font-size="12" font-family="ui-monospace, Consolas, monospace">0a8f294</text>
-<text x="360.40000000000003" y="238" fill="#e6edf3" font-size="13">chore(scripts): 把提交历史渲染成 SVG 提交图</text>
-<circle cx="30" cy="268" r="5.5" fill="#2f81f7" stroke="#0b0f14" stroke-width="2"/>
-<text x="136" y="272" fill="#6e7681" font-size="12" font-family="ui-monospace, Consolas, monospace">f49a844</text>
-<text x="189.2" y="272" fill="#e6edf3" font-size="13">Merge branch 'feat/inline-actions-and-deal-animation'</text>
-<circle cx="82" cy="302" r="5.5" fill="#e3b341" stroke="#0b0f14" stroke-width="2"/>
-<rect x="126" y="292" width="261.2" height="20" rx="10" fill="#6e7681" opacity="0.18"/>
-<rect x="126" y="292" width="261.2" height="20" rx="10" fill="none" stroke="#6e7681" stroke-width="1.2"/>
-<text x="134" y="306" fill="#6e7681" font-size="12" font-weight="600">feat/inline-actions-and-deal-animation</text>
-<text x="403.20000000000016" y="306" fill="#6e7681" font-size="12" font-family="ui-monospace, Consolas, monospace">071a272</text>
-<text x="456.40000000000015" y="306" fill="#e6edf3" font-size="13">feat(web): 行动标签挪到牌的右侧，新牌翻牌入场而不是瞬间出现</text>
-<circle cx="30" cy="336" r="5.5" fill="#2f81f7" stroke="#0b0f14" stroke-width="2"/>
-<text x="136" y="340" fill="#6e7681" font-size="12" font-family="ui-monospace, Consolas, monospace">55be19a</text>
-<text x="189.2" y="340" fill="#e6edf3" font-size="13">chore: 锁定依赖版本</text>
-<circle cx="30" cy="370" r="5.5" fill="#2f81f7" stroke="#0b0f14" stroke-width="2"/>
-<text x="136" y="374" fill="#6e7681" font-size="12" font-family="ui-monospace, Consolas, monospace">4834691</text>
-<text x="189.2" y="374" fill="#e6edf3" font-size="13">docs: README、公网部署说明与界面截图</text>
-<circle cx="30" cy="404" r="5.5" fill="#2f81f7" stroke="#0b0f14" stroke-width="2"/>
-<text x="136" y="408" fill="#6e7681" font-size="12" font-family="ui-monospace, Consolas, monospace">4017030</text>
-<text x="189.2" y="408" fill="#e6edf3" font-size="13">chore(scripts): 演示、对局、冒烟与基准脚本</text>
-<circle cx="30" cy="438" r="5.5" fill="#2f81f7" stroke="#0b0f14" stroke-width="2"/>
-<text x="136" y="442" fill="#6e7681" font-size="12" font-family="ui-monospace, Consolas, monospace">047c6cb</text>
-<text x="189.2" y="442" fill="#e6edf3" font-size="13">feat(web): React 牌桌界面：椭圆桌、纸牌样式与行动条</text>
-<circle cx="30" cy="472" r="5.5" fill="#2f81f7" stroke="#0b0f14" stroke-width="2"/>
-<text x="136" y="476" fill="#6e7681" font-size="12" font-family="ui-monospace, Consolas, monospace">3b63632</text>
-<text x="189.2" y="476" fill="#e6edf3" font-size="13">feat(server): HTTP + WebSocket 入口、房间码与心跳</text>
-<circle cx="30" cy="506" r="5.5" fill="#2f81f7" stroke="#0b0f14" stroke-width="2"/>
-<text x="136" y="510" fill="#6e7681" font-size="12" font-family="ui-monospace, Consolas, monospace">946a859</text>
-<text x="189.2" y="510" fill="#e6edf3" font-size="13">feat(server): 关键决策点交给大模型，其余留在本地</text>
-<circle cx="30" cy="540" r="5.5" fill="#2f81f7" stroke="#0b0f14" stroke-width="2"/>
-<text x="136" y="544" fill="#6e7681" font-size="12" font-family="ui-monospace, Consolas, monospace">ceea4cd</text>
-<text x="189.2" y="544" fill="#e6edf3" font-size="13">feat(server): NPC 人格参数与本地蒙特卡洛决策</text>
-<circle cx="30" cy="574" r="5.5" fill="#2f81f7" stroke="#0b0f14" stroke-width="2"/>
-<text x="136" y="578" fill="#6e7681" font-size="12" font-family="ui-monospace, Consolas, monospace">8e6dc9a</text>
-<text x="189.2" y="578" fill="#e6edf3" font-size="13">feat(server): 房间层、协议与按观众过滤的底牌视图</text>
-<circle cx="30" cy="608" r="5.5" fill="#2f81f7" stroke="#0b0f14" stroke-width="2"/>
-<text x="136" y="612" fill="#6e7681" font-size="12" font-family="ui-monospace, Consolas, monospace">15b8b93</text>
-<text x="189.2" y="612" fill="#e6edf3" font-size="13">feat: 面向人的显示格式化（十显示成 10，牌型名称中文化）</text>
-<circle cx="30" cy="642" r="5.5" fill="#2f81f7" stroke="#0b0f14" stroke-width="2"/>
-<text x="136" y="646" fill="#6e7681" font-size="12" font-family="ui-monospace, Consolas, monospace">c99e9da</text>
-<text x="189.2" y="646" fill="#e6edf3" font-size="13">feat(engine): 牌局状态机：盲注、下注轮、加注合法性、边池、摊牌</text>
-<circle cx="30" cy="676" r="5.5" fill="#2f81f7" stroke="#0b0f14" stroke-width="2"/>
-<text x="136" y="680" fill="#6e7681" font-size="12" font-family="ui-monospace, Consolas, monospace">97972fe</text>
-<text x="189.2" y="680" fill="#e6edf3" font-size="13">feat(engine): 范围记法解析与蒙特卡洛胜率</text>
-<circle cx="30" cy="710" r="5.5" fill="#2f81f7" stroke="#0b0f14" stroke-width="2"/>
-<text x="136" y="714" fill="#6e7681" font-size="12" font-family="ui-monospace, Consolas, monospace">d51a0e2</text>
-<text x="189.2" y="714" fill="#e6edf3" font-size="13">feat(engine): 7 选 5 牌力评估，压成单个整数比较</text>
-<circle cx="30" cy="744" r="5.5" fill="#2f81f7" stroke="#0b0f14" stroke-width="2"/>
-<text x="136" y="748" fill="#6e7681" font-size="12" font-family="ui-monospace, Consolas, monospace">72a7df5</text>
-<text x="189.2" y="748" fill="#e6edf3" font-size="13">feat(engine): 牌的编码、洗牌与可注入随机源</text>
-<circle cx="30" cy="778" r="5.5" fill="#2f81f7" stroke="#0b0f14" stroke-width="2"/>
-<text x="136" y="782" fill="#6e7681" font-size="12" font-family="ui-monospace, Consolas, monospace">d66bb1a</text>
-<text x="189.2" y="782" fill="#e6edf3" font-size="13">chore: 项目骨架（Node + TypeScript，服务端零构建直接跑）</text>
+<text x="84" y="204" fill="#6e7681" font-size="12" font-family="ui-monospace, Consolas, monospace">5c05d97</text>
+<text x="137.2" y="204" fill="#e6edf3" font-size="13">feat(engine): 牌的编码、牌力评估、范围记法、蒙卡胜率与牌局状态机</text>
+<circle cx="30" cy="234" r="5.5" fill="#2f81f7" stroke="#0b0f14" stroke-width="2"/>
+<text x="84" y="238" fill="#6e7681" font-size="12" font-family="ui-monospace, Consolas, monospace">15a7cd3</text>
+<text x="137.2" y="238" fill="#e6edf3" font-size="13">chore: 项目骨架、工具链与独立窗口启动器</text>
 </svg>
