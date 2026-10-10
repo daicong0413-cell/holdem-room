@@ -20,6 +20,7 @@ import { fileURLToPath } from "node:url";
 import { WebSocket, WebSocketServer } from "ws";
 
 import { type Advisor, DeepSeekAdvisor } from "./advisor.ts";
+import { type EnvUpdates, updateEnvFile } from "./env-file.ts";
 import { type BotBrain, PERSONAS, findPersona, makeBotDecider, personaInfos } from "./bots.ts";
 import {
   DEFAULT_SETTINGS,
@@ -38,7 +39,9 @@ import { type RoomMember, type RoomSocket, Room } from "./room.ts";
  *
  * Runs before the constants below, because they read `process.env` on load.
  */
-function loadDotEnv(path = ".env"): void {
+const ENV_PATH = resolve(process.cwd(), ".env");
+
+function loadDotEnv(path: string): void {
   let text: string;
   try {
     text = readFileSync(path, "utf8");
@@ -59,7 +62,7 @@ function loadDotEnv(path = ".env"): void {
   }
 }
 
-loadDotEnv();
+loadDotEnv(ENV_PATH);
 
 const PORT = Number(process.env.PORT ?? 8787);
 const HOST = process.env.HOST ?? "0.0.0.0";
@@ -129,18 +132,74 @@ function createAdvisorFromEnv(): Advisor | null {
   });
 }
 
-const advisor = createAdvisorFromEnv();
+/** Mutable: the operator can point it at another backend without a restart. */
+let advisor = createAdvisorFromEnv();
 
 /**
  * What the model backend is set to, for display. The key itself is never sent
  * anywhere — only whether one has been configured.
  */
-function llmStatus(): { enabled: boolean; model: string | null; baseUrl: string | null } {
+function llmStatus(configurable: boolean): {
+  enabled: boolean;
+  model: string | null;
+  baseUrl: string | null;
+  configurable: boolean;
+} {
   return {
     enabled: advisor !== null,
     model: process.env.DEEPSEEK_MODEL?.trim() || null,
     baseUrl: process.env.DEEPSEEK_BASE_URL?.trim() || null,
+    configurable,
   };
+}
+
+/**
+ * Only the machine the server runs on counts as the operator. Letting any
+ * player change this would let somebody who guessed a room code spend the
+ * operator's tokens.
+ */
+function isLocalRequest(request: IncomingMessage): boolean {
+  const address = request.socket.remoteAddress ?? "";
+  return address === "127.0.0.1" || address === "::1" || address === "::ffff:127.0.0.1";
+}
+
+async function readJsonBody(request: IncomingMessage, limit = 8192): Promise<unknown> {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of request) {
+    const buffer = chunk as Buffer;
+    size += buffer.length;
+    if (size > limit) throw new Error("请求体太大");
+    chunks.push(buffer);
+  }
+  if (size === 0) return {};
+  return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+}
+
+/**
+ * Applies a backend change from the operator's machine: updates the live
+ * environment, rewrites `.env` so it survives a restart, and swaps in a fresh
+ * advisor. An empty string clears a setting.
+ */
+function applyLlmSettings(input: { apiKey?: unknown; baseUrl?: unknown; model?: unknown }): void {
+  const updates: EnvUpdates = {};
+
+  const put = (name: string, raw: unknown): void => {
+    if (typeof raw !== "string") return;
+    const value = raw.trim();
+    updates[name] = value.length === 0 ? null : value;
+    if (value.length === 0) delete process.env[name];
+    else process.env[name] = value;
+  };
+
+  put("DEEPSEEK_API_KEY", input.apiKey);
+  put("DEEPSEEK_BASE_URL", input.baseUrl);
+  put("DEEPSEEK_MODEL", input.model);
+
+  if (Object.keys(updates).length === 0) throw new Error("没有要修改的配置");
+
+  updateEnvFile(ENV_PATH, updates);
+  advisor = createAdvisorFromEnv();
 }
 
 function createRoomCode(): string {
@@ -263,8 +322,36 @@ const server = createServer((request, response) => {
   }
 
   if (url.pathname === "/api/personas") {
-    sendJson(response, 200, { personas: personaInfos(), llm: llmStatus() });
+    sendJson(response, 200, { personas: personaInfos(), llm: llmStatus(isLocalRequest(request)) });
     return;
+  }
+
+  if (url.pathname === "/api/llm") {
+    const local = isLocalRequest(request);
+    if (request.method === "GET") {
+      sendJson(response, 200, llmStatus(local));
+      return;
+    }
+    if (request.method === "POST") {
+      if (!local) {
+        sendJson(response, 403, { error: "只有运行服务器的那台机器可以修改大模型配置" });
+        return;
+      }
+      void (async () => {
+        try {
+          const body = (await readJsonBody(request)) as {
+            apiKey?: unknown;
+            baseUrl?: unknown;
+            model?: unknown;
+          };
+          applyLlmSettings(body);
+          sendJson(response, 200, llmStatus(true));
+        } catch (error) {
+          sendJson(response, 400, { error: error instanceof Error ? error.message : "配置失败" });
+        }
+      })();
+      return;
+    }
   }
 
   if (url.pathname === "/api/config") {

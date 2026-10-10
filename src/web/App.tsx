@@ -35,6 +35,8 @@ interface LlmStatus {
   enabled: boolean;
   model: string | null;
   baseUrl: string | null;
+  /** True only when this browser is on the machine running the server. */
+  configurable: boolean;
 }
 
 interface SettingsBounds {
@@ -1206,15 +1208,122 @@ function TableScreen({
 
 // --------------------------------------------------------------------- lobby
 
+/**
+ * Lets whoever is running the server point the bots at a model backend.
+ *
+ * The key is write-only: the server never sends it back, so the field starts
+ * empty and leaving it empty keeps whatever is already saved.
+ */
+function LlmDialog({
+  status,
+  onClose,
+  onSaved,
+}: {
+  status: LlmStatus;
+  onClose: () => void;
+  onSaved: (next: LlmStatus) => void;
+}): ReactElement {
+  const [apiKey, setApiKey] = useState("");
+  const [baseUrl, setBaseUrl] = useState(status.baseUrl ?? "");
+  const [model, setModel] = useState(status.model ?? "");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const submit = (clearKey: boolean): void => {
+    setBusy(true);
+    setError(null);
+    const body = clearKey
+      ? { apiKey: "", baseUrl, model }
+      : {
+          ...(apiKey.trim().length > 0 ? { apiKey: apiKey.trim() } : {}),
+          baseUrl,
+          model,
+        };
+    void fetch("/api/llm", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    })
+      .then(async (response) => {
+        const payload = (await response.json()) as LlmStatus & { error?: string };
+        if (!response.ok) throw new Error(payload.error ?? "保存失败");
+        onSaved(payload);
+        onClose();
+      })
+      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "保存失败"))
+      .finally(() => setBusy(false));
+  };
+
+  return (
+    <div className="llm-overlay" onClick={onClose}>
+      <div className="llm-dialog" onClick={(event) => event.stopPropagation()}>
+        <h2>大模型配置</h2>
+        <p className="llm-note">
+          只在这台机器上可用（服务器所在的那台）。填了就写进项目根目录的 <code>.env</code>，
+          重启也在；不填就让机器人只用本地蒙特卡洛决策，一分钱不花。
+        </p>
+
+        <label className="llm-field">
+          <span>API Key{status.enabled ? "（已配置，留空则不改）" : ""}</span>
+          <input
+            type="password"
+            value={apiKey}
+            placeholder={status.enabled ? "保持原样" : "sk-..."}
+            onChange={(event) => setApiKey(event.target.value)}
+            autoComplete="off"
+          />
+        </label>
+
+        <label className="llm-field">
+          <span>接口地址（留空 = 默认）</span>
+          <input
+            value={baseUrl}
+            placeholder="https://api.deepseek.com"
+            onChange={(event) => setBaseUrl(event.target.value)}
+          />
+        </label>
+
+        <label className="llm-field">
+          <span>模型名（留空 = 默认）</span>
+          <input value={model} placeholder="deepseek-chat" onChange={(event) => setModel(event.target.value)} />
+        </label>
+
+        <p className="llm-note">
+          任何兼容 OpenAI <code>/chat/completions</code> 的服务都行：OpenAI、月之暗面、本地 Ollama 都可以。
+        </p>
+
+        {error ? <p className="llm-error">{error}</p> : null}
+
+        <div className="llm-actions">
+          <button type="button" onClick={onClose} disabled={busy}>
+            取消
+          </button>
+          {status.enabled ? (
+            <button type="button" className="danger" onClick={() => submit(true)} disabled={busy}>
+              关闭大模型
+            </button>
+          ) : null}
+          <button type="button" className="primary" onClick={() => submit(false)} disabled={busy}>
+            保存
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Lobby({
   personas,
   llm,
+  onLlm,
   onJoin,
 }: {
   personas: PersonaInfo[];
   llm: LlmStatus | null;
+  onLlm: (next: LlmStatus) => void;
   onJoin: (room: string, name: string) => void;
 }): ReactElement {
+  const [llmOpen, setLlmOpen] = useState(false);
   const [name, setName] = useState(() => localStorage.getItem(NAME_KEY) ?? "");
   const [room, setRoom] = useState(() => (new URLSearchParams(window.location.search).get("room") ?? "").toUpperCase());
 
@@ -1266,9 +1375,18 @@ function Lobby({
         <p className="fine-print">
           {llm?.enabled
             ? `大模型已接入：${llm.model ?? "默认模型"}${llm.baseUrl ? ` @ ${llm.baseUrl}` : ""}。常规决策仍在本地完成，只有关键决策点才调用它。`
-            : "大模型未接入——填好项目根目录的 .env（DEEPSEEK_API_KEY 等）重启即可开启。现在机器人完全靠本地蒙特卡洛 + 人格参数决策，不消耗 token。"}
+            : "大模型未接入，机器人完全靠本地蒙特卡洛 + 人格参数决策，不消耗 token。"}
         </p>
+        {llm?.configurable ? (
+          <button type="button" className="ghost llm-open" onClick={() => setLlmOpen(true)}>
+            {llm.enabled ? "修改大模型配置" : "配置大模型"}
+          </button>
+        ) : (
+          <p className="fine-print">大模型配置只能在运行服务器的那台机器上修改。</p>
+        )}
       </div>
+
+      {llmOpen && llm ? <LlmDialog status={llm} onClose={() => setLlmOpen(false)} onSaved={onLlm} /> : null}
     </div>
   );
 }
@@ -1343,7 +1461,7 @@ export function App(): ReactElement {
           onRequestHistory={game.requestHistory}
         />
       ) : (
-        <Lobby personas={personas} llm={llm} onJoin={game.connect} />
+        <Lobby personas={personas} llm={llm} onLlm={setLlm} onJoin={game.connect} />
       )}
 
       {game.historyEntry ? <HistoryDialog entry={game.historyEntry} onClose={game.closeHistory} /> : null}

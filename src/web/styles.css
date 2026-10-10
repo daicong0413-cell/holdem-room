@@ -846,6 +846,86 @@ input[type="number"] {
   color: var(--muted);
 }
 
+/* ------------------------------------------------------- model backend dialog */
+
+.llm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  background: rgb(4 8 12 / 0.72);
+  padding: 24px;
+}
+
+.llm-dialog {
+  width: min(100%, 520px);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 22px 24px;
+  box-shadow: 0 24px 60px rgb(0 0 0 / 0.55);
+}
+
+.llm-dialog h2 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.llm-note {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.llm-note code {
+  background: rgb(255 255 255 / 0.08);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+.llm-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.llm-field input {
+  background: #0d141b;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 9px 11px;
+  color: var(--text);
+  font-size: 13.5px;
+}
+
+.llm-field input:focus {
+  outline: none;
+  border-color: #2f81f7;
+}
+
+.llm-error {
+  margin: 0;
+  font-size: 12.5px;
+  color: #ff8a80;
+}
+
+.llm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.llm-open {
+  align-self: flex-start;
+}
+
 /* Only ever rendered on your own plate. */
 .stand-btn {
   border: 1px solid var(--line);
