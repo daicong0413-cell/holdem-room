@@ -10,6 +10,7 @@ import {
   useState,
 } from "react";
 
+import { allInIsDistinct, potBetAmount } from "./betting.ts";
 import { displayCard, displayRank, handNameZh, isRedSuit, money, streetLabelZh, SUIT_SYMBOLS } from "../shared/format.ts";
 import type {
   ClientMessage,
@@ -542,7 +543,15 @@ function ActionBar({
 
   const clamped = Math.min(Math.max(target, legal.minRaiseTo), legal.maxRaiseTo);
   const potBet = (fraction: number): number =>
-    Math.min(legal.maxRaiseTo, Math.max(legal.minRaiseTo, Math.round(legal.minRaiseTo + view.pot * fraction)));
+    potBetAmount(
+      { pot: view.pot, toCall: legal.toCall, minRaiseTo: legal.minRaiseTo, maxRaiseTo: legal.maxRaiseTo },
+      fraction,
+    );
+
+  // Calling already uses every chip, so a second "all in" button would be the
+  // same action twice — and it reads like a raise they cannot afford.
+  const heroStack = view.seats.find((seat) => seat.index === legal.seatIndex)?.stack ?? 0;
+  const showAllIn = allInIsDistinct({ canAllIn: legal.canAllIn, callCost: legal.callCost, stack: heroStack });
 
   return (
     <div className="action-cluster">
@@ -617,7 +626,7 @@ function ActionBar({
           >
             {legal.toCall > 0 ? `加注到 ${money(clamped)}` : `下注 ${money(clamped)}`}
           </button>
-        ) : legal.canAllIn ? (
+        ) : showAllIn ? (
           <button
             type="button"
             className="primary"
@@ -701,6 +710,10 @@ function SettingsDialog({
   onClose: () => void;
   onSave: (patch: RoomSettingsPatch) => void;
 }): ReactElement {
+  /** Remembers the interval so toggling auto-start off and on is not lossy. */
+  const [autoStartLast, setAutoStartLast] = useState(
+    view.settings.autoStartSeconds > 0 ? view.settings.autoStartSeconds : 6,
+  );
   const [draft, setDraft] = useState({
     seats: view.settings.seats,
     smallBlind: view.settings.smallBlind,
@@ -793,10 +806,36 @@ function SettingsDialog({
             {number("bigBlind", "bigBlind")}
           </label>
 
-          <label>
-            <span>自动开局间隔（秒，0 = 手动开始）</span>
-            {number("autoStartSeconds", "autoStartSeconds")}
+          <label className="switch">
+            <input
+              type="checkbox"
+              checked={draft.autoStartSeconds > 0}
+              onChange={(event) =>
+                setDraft({ ...draft, autoStartSeconds: event.target.checked ? autoStartLast : 0 })
+              }
+            />
+            <span className="track" aria-hidden="true" />
+            <span>自动开始下一手牌</span>
           </label>
+
+          {draft.autoStartSeconds > 0 ? (
+            <label>
+              <span>间隔（秒）</span>
+              <input
+                type="number"
+                min={bound("autoStartSeconds").min}
+                max={bound("autoStartSeconds").max}
+                value={draft.autoStartSeconds}
+                onChange={(event) => {
+                  const value = Number(event.target.value);
+                  setDraft({ ...draft, autoStartSeconds: value });
+                  if (value > 0) setAutoStartLast(value);
+                }}
+              />
+            </label>
+          ) : (
+            <p className="fine-print">手动开始：每手结束后点行动条上的「开始下一手」。</p>
+          )}
 
           <label className="check">
             <input

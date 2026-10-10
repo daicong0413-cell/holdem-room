@@ -926,6 +926,62 @@ input[type="number"] {
   align-self: flex-start;
 }
 
+/* A sliding on/off switch, used for the auto-start toggle. */
+.switch {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.switch input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.switch .track {
+  flex: 0 0 auto;
+  position: relative;
+  width: 42px;
+  height: 23px;
+  border-radius: 999px;
+  background: #2b3540;
+  border: 1px solid var(--line);
+  transition: background 0.18s ease;
+}
+
+.switch .track::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background: #8b98a5;
+  transition:
+    transform 0.18s ease,
+    background 0.18s ease;
+}
+
+.switch input:checked + .track {
+  background: #1f6feb;
+  border-color: #1f6feb;
+}
+
+.switch input:checked + .track::after {
+  transform: translateX(19px);
+  background: #fff;
+}
+
+.switch input:focus-visible + .track {
+  outline: 2px solid #2f81f7;
+  outline-offset: 2px;
+}
+
 /* Only ever rendered on your own plate. */
 .stand-btn {
   border: 1px solid var(--line);
