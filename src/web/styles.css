@@ -1563,6 +1563,13 @@ label.check input {
   color: #6b7684;
 }
 
+/* A locked field must look locked. */
+.settings-grid input:disabled,
+.settings-grid select:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .settings-grid input,
 .settings-grid select {
   width: 100%;

@@ -228,7 +228,7 @@ function useGame(): {
   // read one, and a new notice replaces it.
   useEffect(() => {
     if (notice === null) return;
-    const timer = setTimeout(() => setNotice(null), 7000);
+    const timer = setTimeout(() => setNotice(null), 3000);
     return () => clearTimeout(timer);
   }, [notice]);
   const [chat, setChat] = useState<ChatLine[]>([]);
@@ -754,11 +754,19 @@ function SettingsDialog({
   const anyoneSeated = view.seats.some((seat) => seat.playerId !== null);
   const bound = (key: string): { min: number; max: number } => bounds[key] ?? FALLBACK_BOUNDS[key] ?? { min: 0, max: 1e9 };
 
-  const number = (key: keyof typeof draft, boundKey: string) => (
+  /**
+   * `locked` greys the field *and* stops it accepting input.
+   *
+   * It used to only grey the label, so a field captioned "开局后不能改" was
+   * still editable — a stray click or scroll changed it, and the server then
+   * rejected the save for editing a setting nobody meant to touch.
+   */
+  const number = (key: keyof typeof draft, boundKey: string, locked = false) => (
     <input
       type="number"
       min={bound(boundKey).min}
       max={bound(boundKey).max}
+      disabled={locked}
       value={draft[key] as number}
       onChange={(event) => setDraft({ ...draft, [key]: Number(event.target.value) })}
     />
@@ -775,15 +783,21 @@ function SettingsDialog({
     const current = view.settings;
     const timeoutMs = Math.round(draft.actionTimeoutSeconds * 1000);
 
+    // Never send a field the server refuses to change right now, even if a
+    // stale draft says it differs — the guards are unreachable this way.
+    const canSeats = !anyoneSeated;
+    const canMode = !gameStarted;
+    const canBlinds = !handInProgress;
+
     onSave({
-      ...(draft.seats !== current.seats ? { seats: draft.seats } : {}),
-      ...(draft.smallBlind !== current.smallBlind ? { smallBlind: draft.smallBlind } : {}),
-      ...(draft.bigBlind !== current.bigBlind ? { bigBlind: draft.bigBlind } : {}),
+      ...(canSeats && draft.seats !== current.seats ? { seats: draft.seats } : {}),
+      ...(canBlinds && draft.smallBlind !== current.smallBlind ? { smallBlind: draft.smallBlind } : {}),
+      ...(canBlinds && draft.bigBlind !== current.bigBlind ? { bigBlind: draft.bigBlind } : {}),
       ...(draft.startingStack !== current.startingStack ? { startingStack: draft.startingStack } : {}),
-      ...(timeoutMs !== current.actionTimeoutMs ? { actionTimeoutMs: timeoutMs } : {}),
-      ...(draft.mode !== current.mode ? { mode: draft.mode } : {}),
-      ...(draft.blindLevelHands !== current.blindLevelHands ? { blindLevelHands: draft.blindLevelHands } : {}),
-      ...(draft.blindGrowth !== current.blindGrowth ? { blindGrowth: draft.blindGrowth } : {}),
+      ...(canBlinds && timeoutMs !== current.actionTimeoutMs ? { actionTimeoutMs: timeoutMs } : {}),
+      ...(canMode && draft.mode !== current.mode ? { mode: draft.mode } : {}),
+      ...(canMode && draft.blindLevelHands !== current.blindLevelHands ? { blindLevelHands: draft.blindLevelHands } : {}),
+      ...(canMode && draft.blindGrowth !== current.blindGrowth ? { blindGrowth: draft.blindGrowth } : {}),
       ...(draft.autoStartSeconds !== current.autoStartSeconds ? { autoStartSeconds: draft.autoStartSeconds } : {}),
       ...(draft.botAutoRebuy !== current.botAutoRebuy ? { botAutoRebuy: draft.botAutoRebuy } : {}),
     });
@@ -803,7 +817,7 @@ function SettingsDialog({
         <div className="settings-grid">
           <label className={anyoneSeated ? "disabled" : ""}>
             <span>座位数{anyoneSeated ? "（有人入座后不能改）" : ""}</span>
-            {number("seats", "seats")}
+            {number("seats", "seats", anyoneSeated)}
           </label>
 
           <label className={gameStarted ? "disabled" : ""}>
@@ -818,24 +832,24 @@ function SettingsDialog({
             </select>
           </label>
 
-          <label className={gameStarted ? "disabled" : ""}>
-            <span>起始筹码{gameStarted ? "（开局后不能改）" : ""}</span>
+          <label>
+            <span>起始筹码（每个新入座玩家的默认买入）</span>
             {number("startingStack", "startingStack")}
           </label>
 
           <label className={handInProgress ? "disabled" : ""}>
-            <span>行动限时（秒，0 = 关闭）</span>
-            {number("actionTimeoutSeconds", "actionTimeoutMs")}
+            <span>行动限时（秒，0 = 关闭）{handInProgress ? "（本手结束可改）" : ""}</span>
+            {number("actionTimeoutSeconds", "actionTimeoutMs", handInProgress)}
           </label>
 
           <label className={handInProgress ? "disabled" : ""}>
-            <span>小盲</span>
-            {number("smallBlind", "smallBlind")}
+            <span>小盲{handInProgress ? "（本手结束可改）" : ""}</span>
+            {number("smallBlind", "smallBlind", handInProgress)}
           </label>
 
           <label className={handInProgress ? "disabled" : ""}>
-            <span>大盲</span>
-            {number("bigBlind", "bigBlind")}
+            <span>大盲{handInProgress ? "（本手结束可改）" : ""}</span>
+            {number("bigBlind", "bigBlind", handInProgress)}
           </label>
 
           {/* Same shape as every other field: title on top, control below. */}
@@ -892,11 +906,11 @@ function SettingsDialog({
             <>
               <label className={gameStarted ? "disabled" : ""}>
                 <span>每多少手升盲{gameStarted ? "（开局后不能改）" : ""}</span>
-                {number("blindLevelHands", "blindLevelHands")}
+                {number("blindLevelHands", "blindLevelHands", gameStarted)}
               </label>
               <label className={gameStarted ? "disabled" : ""}>
                 <span>每次盲注倍数{gameStarted ? "（开局后不能改）" : ""}</span>
-                {number("blindGrowth", "blindGrowth")}
+                {number("blindGrowth", "blindGrowth", gameStarted)}
               </label>
             </>
           ) : null}

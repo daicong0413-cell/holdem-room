@@ -260,7 +260,19 @@ export class Room {
     if (this.table.handId > 0) {
       if (next.mode !== previous.mode) throw new Error("牌局已经开始，不能切换模式");
       if (next.blindLevelHands !== previous.blindLevelHands || next.blindGrowth !== previous.blindGrowth) {
-        throw new Error("牌局已经开始，不能修改升盲设置");
+        // Name the values that arrived: a rejection nobody can explain is worse
+        // than the rejection itself.
+        const changed = [
+          next.blindLevelHands !== previous.blindLevelHands
+            ? `每多少手升盲 ${previous.blindLevelHands} → ${next.blindLevelHands}`
+            : null,
+          next.blindGrowth !== previous.blindGrowth
+            ? `升盲倍数 ${previous.blindGrowth} → ${next.blindGrowth}`
+            : null,
+        ]
+          .filter((part): part is string => part !== null)
+          .join("，");
+        throw new Error(`牌局已经开始，不能修改升盲设置（收到：${changed}）`);
       }
     }
 
