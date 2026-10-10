@@ -1,0 +1,1464 @@
+:root {
+  --bg: #0a0f14;
+  --panel: #121a22;
+  --panel-2: #1a232d;
+  --line: #26313d;
+  --text: #e6edf3;
+  --muted: #8b98a5;
+  --accent: #2f81f7;
+  --gold: #e3b341;
+  --green: #3fb950;
+  --red: #f85149;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.55 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+button {
+  font: inherit;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 14px;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, transform 0.06s ease;
+}
+
+button:hover:not(:disabled) {
+  background: #22303d;
+  border-color: #3a4a5a;
+}
+
+button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+button.primary:hover:not(:disabled) {
+  background: #4b95ff;
+  border-color: #4b95ff;
+}
+
+button.danger {
+  color: #ffb4ae;
+  border-color: #5c2a27;
+}
+
+button.danger:hover:not(:disabled) {
+  background: #3a1f1d;
+}
+
+button.ghost {
+  background: transparent;
+}
+
+input,
+select {
+  font: inherit;
+  color: var(--text);
+  background: #0d141b;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 10px;
+}
+
+input:focus,
+select:focus,
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* ------------------------------------------------------------------ notice */
+
+.notice {
+  position: fixed;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 60;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  background: #3a1f1d;
+  border: 1px solid #6e2f2b;
+  color: #ffd7d3;
+  padding: 9px 12px 9px 16px;
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.45);
+}
+
+.notice button {
+  background: transparent;
+  border: none;
+  padding: 2px 6px;
+}
+
+/* ------------------------------------------------------------------ cards */
+
+.card {
+  --rank: 13px;
+  --pip: 22px;
+  position: relative;
+  flex: 0 0 auto;
+  border-radius: 7px;
+  user-select: none;
+}
+
+/* A dealt card arrives face down, pauses, then turns over. The turn is a
+   squash rather than a true rotateY: it reads the same, but no card keeps a
+   3D rendering context, so every card stays on the ordinary paint path. */
+.card-inner {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  animation: card-turn 760ms cubic-bezier(0.25, 0.8, 0.3, 1);
+  animation-delay: var(--deal-delay, 0ms);
+}
+
+/* Face down at full size, a beat to read it, then the turn itself. */
+@keyframes card-turn {
+  0% {
+    transform: translateY(-18px);
+    opacity: 0;
+  }
+  13% {
+    transform: translateY(0) scaleX(1);
+    opacity: 1;
+  }
+  40% {
+    transform: translateY(0) scaleX(1);
+    opacity: 1;
+  }
+  52% {
+    transform: scaleX(0.06);
+    opacity: 1;
+  }
+  100% {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+}
+
+.flip-face {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+
+.flip-front {
+  opacity: 1;
+  background: linear-gradient(160deg, #ffffff 0%, #f2f5f8 100%);
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.45),
+    0 3px 8px rgb(0 0 0 / 0.3),
+    inset 0 0 0 1px rgb(0 0 0 / 0.07);
+  animation: face-show 760ms linear;
+  /* After the shorthand: `animation` resets animation-delay to 0, and the
+     faces must stay in step with the turn on the parent. */
+  animation-delay: var(--deal-delay, 0ms);
+}
+
+/* The suit and rank only appear once the card is edge-on, so the swap itself
+   is never visible. */
+@keyframes face-show {
+  0%,
+  47% {
+    opacity: 0;
+  }
+  49%,
+  100% {
+    opacity: 1;
+  }
+}
+
+.flip-back {
+  opacity: 0;
+  background: repeating-linear-gradient(45deg, #2a5f96 0 5px, #1d4670 5px 10px);
+  border: 1px solid #3d76b3;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.45), inset 0 0 0 2px rgb(255 255 255 / 0.08);
+  animation: face-hide 760ms linear;
+  animation-delay: var(--deal-delay, 0ms);
+}
+
+@keyframes face-hide {
+  0%,
+  47% {
+    opacity: 1;
+  }
+  49%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card-inner,
+  .card-back,
+  .flip-front,
+  .flip-back {
+    animation: none;
+  }
+}
+
+.card-sm {
+  --rank: 13px;
+  --pip: 19px;
+  width: 34px;
+  height: 48px;
+}
+
+.card-md {
+  --rank: 18px;
+  --pip: 31px;
+  width: 52px;
+  height: 73px;
+  border-radius: 8px;
+}
+
+.card-lg {
+  --rank: 24px;
+  --pip: 44px;
+  width: 70px;
+  height: 98px;
+  border-radius: 10px;
+}
+
+/* The suit colour lives on the front face, which is the element that carries
+   the rank and suit now that cards have a flipping inner. */
+.flip-front.is-red {
+  color: #cf2029;
+}
+
+.flip-front.is-black {
+  color: #161d24;
+}
+
+.card-corner {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 0.92;
+  font-weight: 700;
+}
+
+.card-corner-tl {
+  top: 3px;
+  left: 4px;
+}
+
+.card-corner-br {
+  right: 4px;
+  bottom: 3px;
+  transform: rotate(180deg);
+}
+
+.card-rank {
+  font-size: var(--rank);
+  letter-spacing: -0.5px;
+}
+
+.card-suit {
+  font-size: calc(var(--rank) * 0.78);
+}
+
+.card-pip {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: var(--pip);
+  opacity: 0.16;
+}
+
+/* Opponents' cards never turn over, so they simply arrive. */
+.card-back {
+  background:
+    repeating-linear-gradient(45deg, #2a5f96 0 5px, #1d4670 5px 10px);
+  border: 1px solid #3d76b3;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.45), inset 0 0 0 2px rgb(255 255 255 / 0.08);
+  animation: card-arrive 300ms ease-out;
+}
+
+@keyframes card-arrive {
+  from {
+    transform: translateY(-14px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* ------------------------------------------------------------------ shell */
+
+.room {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 290px;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    "top side"
+    "felt side"
+    "dock side";
+  height: 100%;
+}
+
+@media (max-width: 980px) {
+  .room {
+    grid-template-columns: 1fr;
+    grid-template-areas: "top" "felt" "dock";
+    height: auto;
+  }
+
+  .sidebar {
+    display: none;
+  }
+}
+
+.topbar {
+  grid-area: top;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 9px 14px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+
+.room-chip,
+.blinds-chip,
+.mode-chip,
+.pot-chip,
+.host-hint {
+  font-size: 13px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.room-chip strong {
+  color: var(--text);
+  letter-spacing: 0.16em;
+  font-size: 15px;
+}
+
+.blinds-chip strong,
+.pot-chip strong {
+  color: var(--gold);
+  font-size: 14px;
+}
+
+.mode-chip {
+  color: #9ecbff;
+}
+
+.host-hint {
+  opacity: 0.7;
+}
+
+.conn {
+  margin-left: auto;
+}
+
+.conn::before {
+  content: "●";
+  margin-right: 6px;
+  font-size: 10px;
+}
+
+.conn-open::before {
+  color: var(--green);
+}
+
+.conn-connecting::before {
+  color: var(--gold);
+}
+
+.conn-closed::before,
+.conn-idle::before {
+  color: var(--red);
+}
+
+/* ------------------------------------------------------------- oval table */
+
+.table-area {
+  grid-area: felt;
+  position: relative;
+  padding: 40px 40px 34px;
+  overflow: hidden;
+  min-width: 0;
+  min-height: 0;
+  background: radial-gradient(ellipse at 50% 40%, #101d27 0%, #0a1219 72%);
+}
+
+/* Out of flow on purpose: the scaled felt must never be able to feed its own
+   size back into the measurement. That feedback is exactly what made the table
+   grow on resize and then refuse to shrink again. */
+.felt-scale {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+
+/* The felt is laid out once at a fixed 980x605 and then scaled to whatever the
+   window offers, so every part of the table grows together. */
+.felt {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 980px;
+  height: 605px;
+  transform-origin: top left;
+  border-radius: 999px;
+  background: radial-gradient(ellipse at 50% 45%, #2f8a5d 0%, #1f6c49 45%, #14503a 72%, #0d3a2a 100%);
+  box-shadow:
+    inset 0 0 0 2px rgb(255 255 255 / 0.07),
+    inset 0 0 80px rgb(0 0 0 / 0.45),
+    0 0 0 11px #462c19,
+    0 0 0 14px #241409,
+    0 24px 55px rgb(0 0 0 / 0.55);
+}
+
+.table-center {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  z-index: 1;
+}
+
+.center-pot {
+  font-size: 12.5px;
+  color: rgb(255 255 255 / 0.72);
+  background: rgb(0 0 0 / 0.28);
+  border-radius: 999px;
+  padding: 2px 12px;
+}
+
+.board {
+  display: flex;
+  gap: 9px;
+  min-height: 73px;
+  align-items: center;
+}
+
+.board-hint {
+  color: rgb(255 255 255 / 0.34);
+  font-size: 13px;
+}
+
+/* ------------------------------------------------------------------ seats */
+
+.seat {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  z-index: 3;
+  transition: opacity 0.2s ease;
+}
+
+.seat.is-folded:not(.is-hero) {
+  opacity: 0.45;
+}
+
+/* You always get to see your own cards clearly, even after folding. */
+.seat.is-hero.is-folded .seat-plate,
+.seat.is-hero.is-folded .seat-action {
+  opacity: 0.5;
+}
+
+.seat.is-empty {
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px dashed rgb(255 255 255 / 0.28);
+  border-radius: 12px;
+  background: rgb(6 14 20 / 0.55);
+}
+
+.seat-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  align-items: stretch;
+}
+
+.seat-actions select,
+.seat-actions button {
+  font-size: 12px;
+  padding: 4px 8px;
+}
+
+.seat-cards-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  perspective: 700px;
+}
+
+.seat-cards {
+  display: flex;
+  gap: 5px;
+  min-height: 48px;
+  align-items: flex-end;
+  perspective: 700px;
+}
+
+.seat.is-hero .seat-cards {
+  min-height: 98px;
+}
+
+/* What the player just did, hanging off the side of their cards. */
+.seat-action {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  background: rgb(0 0 0 / 0.45);
+  border: 1px solid rgb(255 255 255 / 0.14);
+  border-radius: 999px;
+  padding: 2px 10px;
+  white-space: nowrap;
+}
+
+.seat-action.on-right {
+  left: 100%;
+  margin-left: 9px;
+}
+
+.seat-action.on-left {
+  right: 100%;
+  margin-right: 9px;
+}
+
+.seat-plate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  background: rgb(8 15 21 / 0.9);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 5px 14px 6px;
+  font-size: 14px;
+  white-space: nowrap;
+  box-shadow: 0 2px 10px rgb(0 0 0 / 0.4);
+}
+
+.seat-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.seat-name {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 600;
+}
+
+.seat-stack {
+  color: var(--gold);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.seat-badges {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.seat.is-hero .seat-plate {
+  border-color: #2f81f7;
+  background: rgb(12 28 42 / 0.95);
+}
+
+.seat.is-turn .seat-plate {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 1px var(--gold), 0 0 20px rgb(227 179 65 / 0.35);
+}
+
+.turn-ring {
+  position: absolute;
+  inset: -9px;
+  border: 2px solid rgb(227 179 65 / 0.5);
+  border-radius: 18px;
+  pointer-events: none;
+  animation: turn-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes turn-pulse {
+  50% {
+    opacity: 0.3;
+  }
+}
+
+/* Bets are drawn as a little pair of gold coins, and never sit under a card. */
+.bet-chip {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  z-index: 7;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: linear-gradient(180deg, rgb(18 26 33 / 0.94), rgb(9 14 19 / 0.96));
+  border: 1px solid rgb(227 179 65 / 0.5);
+  border-radius: 999px;
+  padding: 3px 11px 3px 7px;
+  box-shadow: 0 3px 10px rgb(0 0 0 / 0.55);
+}
+
+.coins {
+  position: relative;
+  width: 20px;
+  height: 18px;
+  flex: 0 0 auto;
+}
+
+.coin {
+  position: absolute;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 34% 30%, #ffeaa6 0%, #f0c14a 44%, #b98420 100%);
+  box-shadow:
+    inset 0 0 0 1.4px rgb(122 88 16 / 0.85),
+    0 1px 3px rgb(0 0 0 / 0.5);
+}
+
+.coin::after {
+  content: "";
+  position: absolute;
+  inset: 3.2px;
+  border-radius: 50%;
+  border: 1px solid rgb(122 88 16 / 0.45);
+}
+
+.coin-back {
+  left: 5px;
+  top: 3px;
+}
+
+.coin-front {
+  left: 0;
+  top: 0;
+}
+
+.bet-amount {
+  color: var(--gold);
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.badge {
+  font-size: 10.5px;
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-weight: 500;
+  line-height: 1.6;
+}
+
+.badge.allin {
+  color: #ffd7a8;
+  border-color: #6b4a12;
+  background: #3a2c0d;
+}
+
+.badge.dealer {
+  background: #f4f7fa;
+  color: #10171e;
+  border-color: #f4f7fa;
+  font-weight: 700;
+}
+
+.badge.blind {
+  color: #cbd6e2;
+  border-color: #3a4a5a;
+}
+
+/* ----------------------------------------------------------- action dock */
+
+.action-dock {
+  grid-area: dock;
+  display: flex;
+  flex-direction: column;
+  gap: calc(10px * var(--ui-scale, 1));
+  padding: calc(11px * var(--ui-scale, 1)) calc(16px * var(--ui-scale, 1));
+  background: var(--panel);
+  border-top: 1px solid var(--line);
+  /* Buttons use `font: inherit`, so this is the dock's single size knob. */
+  font-size: calc(13px * var(--ui-scale, 1));
+}
+
+.dock-row {
+  display: flex;
+  align-items: flex-end;
+  gap: calc(14px * var(--ui-scale, 1));
+  flex-wrap: nowrap;
+}
+
+/* Chat and the action cluster split the dock evenly. */
+.dock-actions {
+  flex: 1 1 50%;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  min-height: 44px;
+}
+
+/* Everything the player can do sits in one right-aligned block: the size slider
+   on top, then fold / check / call / raise in a single row. */
+.action-cluster {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.raise-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-width: 330px;
+}
+
+.raise-row input[type="range"] {
+  flex: 1;
+  min-width: 130px;
+  accent-color: var(--accent);
+  padding: 0;
+}
+
+.raise-input {
+  width: 86px;
+  padding: 6px 9px;
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--gold);
+}
+
+/* A number box with its currency mark baked into the frame. */
+.buyin {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: #0d141b;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 8px 0 9px;
+  color: var(--gold);
+  font-weight: 700;
+}
+
+.buyin input {
+  width: 68px;
+  border: 0;
+  background: transparent;
+  padding: 6px 0;
+  font-size: 1em;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--gold);
+}
+
+.buyin input:focus {
+  outline: none;
+}
+
+.buyin:focus-within {
+  border-color: #2f81f7;
+}
+
+.buyin input::placeholder {
+  color: var(--muted);
+}
+
+.raise-buyin input {
+  width: 74px;
+  font-size: 14px;
+  text-align: left;
+}
+
+/* No spinners: they crowd the box and the amount is typed, not stepped. */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.seat-note {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+/* Checkbox rows in the settings dialog read as one line, not a label above a box. */
+label.check {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+label.check input {
+  width: auto;
+  accent-color: var(--accent);
+}
+
+.raise-presets {
+  display: flex;
+  gap: 6px;
+}
+
+.action-buttons {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+/* ------------------------------------------------------------------- chat */
+
+.chat-box {
+  flex: 1 1 50%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.chat-lines {
+  height: 7.6em;
+  overflow-y: auto;
+  background: #0d141b;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 1em;
+}
+
+.chat-line strong {
+  color: #9ecbff;
+  margin-right: 6px;
+  font-weight: 600;
+}
+
+.chat-line span {
+  color: #c4cfda;
+}
+
+.chat-empty {
+  color: var(--muted);
+  opacity: 0.65;
+}
+
+.chat-form {
+  display: flex;
+  gap: 6px;
+}
+
+.chat-form input {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  padding: 6px 9px;
+}
+
+.chat-form button {
+  font-size: 13px;
+  padding: 6px 10px;
+}
+
+.action-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.raise-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  flex: 1;
+  min-width: 240px;
+  max-width: 560px;
+}
+
+/* ---------------------------------------------------------------- winning */
+
+.seat.is-loser .card {
+  filter: saturate(0.7) brightness(0.88);
+}
+
+/* Only the five cards that actually made the hand light up — including board
+   cards, so "why did they win" is answerable at a glance. */
+.card.is-best {
+  box-shadow:
+    0 0 0 2px var(--gold),
+    0 0 16px rgb(227 179 65 / 0.6),
+    0 3px 10px rgb(0 0 0 / 0.45);
+  transform: translateY(-4px);
+}
+
+.seat.is-winner .seat-plate {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 1px var(--gold), 0 0 24px rgb(227 179 65 / 0.45);
+}
+
+.seat.is-winner .seat-stack {
+  color: var(--gold);
+}
+
+.win-badge {
+  background: linear-gradient(180deg, #f9e39a, #d9a520);
+  color: #3b2a05;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  padding: 2px 12px;
+  border-radius: 999px;
+  white-space: nowrap;
+  box-shadow: 0 3px 12px rgb(0 0 0 / 0.55);
+  animation: win-pop 0.35s ease-out;
+}
+
+@keyframes win-pop {
+  from {
+    transform: scale(0.7);
+    opacity: 0;
+  }
+}
+
+.raise-controls input[type="range"] {
+  flex: 1;
+  min-width: 150px;
+  accent-color: var(--accent);
+  padding: 0;
+}
+
+.raise-presets {
+  display: flex;
+  gap: 6px;
+}
+
+.raise-presets button {
+  font-size: 12.5px;
+  padding: 5px 9px;
+}
+
+.countdown {
+  font-variant-numeric: tabular-nums;
+  font-size: 14px;
+  color: var(--muted);
+  background: #0d141b;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 10px;
+  white-space: nowrap;
+}
+
+.countdown.urgent {
+  color: #ffd7a8;
+  border-color: #6b4a12;
+  background: #3a2c0d;
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 13.5px;
+}
+
+.result {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 9px 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.result-head {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.result ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.showdown-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.showdown-line strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.showdown-cards {
+  font-variant-numeric: tabular-nums;
+}
+
+.showdown-line em {
+  color: var(--gold);
+  font-style: normal;
+}
+
+.net {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.net .up {
+  color: var(--green);
+}
+
+.net .down {
+  color: var(--red);
+}
+
+/* ---------------------------------------------------------------- sidebar */
+
+.sidebar {
+  grid-area: side;
+  background: var(--panel);
+  border-left: 1px solid var(--line);
+  padding: 14px 16px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sidebar h3 {
+  font-size: 12.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin: 8px 0 2px;
+}
+
+.sidebar-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.sidebar-tabs button {
+  flex: 1;
+  font-size: 13px;
+  padding: 6px 8px;
+  background: transparent;
+  border-color: transparent;
+  color: var(--muted);
+}
+
+.sidebar-tabs button.active {
+  background: var(--panel-2);
+  border-color: var(--line);
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* ---------------------------------------------------------- hand history */
+
+.history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.history-list button {
+  width: 100%;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 9px;
+  font-size: 12.5px;
+  background: #0f171f;
+  border-color: transparent;
+}
+
+.history-list button:hover {
+  background: #14202b;
+  border-color: var(--line);
+}
+
+.hl-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.hl-no {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.hl-pot {
+  color: var(--muted);
+}
+
+.hl-board {
+  color: #c4cfda;
+  font-variant-numeric: tabular-nums;
+}
+
+.hl-win {
+  color: var(--green);
+}
+
+.history-modal {
+  width: min(100%, 640px);
+}
+
+.history-meta {
+  margin-left: 10px;
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.history-board {
+  display: flex;
+  gap: 7px;
+  margin: 4px 0 16px;
+  min-height: 73px;
+  align-items: center;
+}
+
+.history-seats {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.history-seats li {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 6px 9px;
+  background: #0f171f;
+  border-radius: 7px;
+  font-size: 13px;
+}
+
+.hs-name {
+  min-width: 84px;
+  font-weight: 600;
+}
+
+.hs-cards {
+  flex: 1;
+  color: #c4cfda;
+  font-variant-numeric: tabular-nums;
+}
+
+.hs-net {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.hs-net.up {
+  color: var(--green);
+}
+
+.hs-net.down {
+  color: var(--red);
+}
+
+.history-sub {
+  font-size: 12.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin: 18px 0 8px;
+}
+
+.history-log {
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.log {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 13px;
+}
+
+.log li {
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: #0f171f;
+  color: #c4cfda;
+}
+
+.log li.log-flop {
+  border-left: 2px solid #2f81f7;
+}
+
+.log li.log-turn {
+  border-left: 2px solid #e3b341;
+}
+
+.log li.log-river {
+  border-left: 2px solid #f85149;
+}
+
+/* ------------------------------------------------------------------ modal */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgb(0 0 0 / 0.6);
+  display: grid;
+  place-items: center;
+  padding: 20px;
+}
+
+.modal {
+  width: min(100%, 560px);
+  max-height: 88vh;
+  overflow: auto;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 20px 22px;
+  box-shadow: 0 24px 60px rgb(0 0 0 / 0.6);
+}
+
+.modal header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.modal h2 {
+  font-size: 17px;
+  margin: 0;
+}
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+.settings-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.settings-grid label.disabled span {
+  color: #6b7684;
+}
+
+.settings-grid input,
+.settings-grid select {
+  width: 100%;
+}
+
+.modal footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.modal .fine-print {
+  margin: 16px 0 0;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+/* ------------------------------------------------------------------ lobby */
+
+.lobby {
+  max-width: 940px;
+  margin: 0 auto;
+  padding: 56px 20px 64px;
+  display: grid;
+  gap: 26px;
+  grid-template-columns: minmax(300px, 1fr) minmax(280px, 1fr);
+}
+
+@media (max-width: 760px) {
+  .lobby {
+    grid-template-columns: 1fr;
+    padding-top: 32px;
+  }
+}
+
+.lobby-card,
+.persona-gallery {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 24px;
+}
+
+.lobby-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.lobby-card h1 {
+  font-size: 21px;
+  margin: 0;
+}
+
+.lobby-sub {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.lobby-card label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.lobby-card input {
+  width: 100%;
+}
+
+.lobby-card .code-input {
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.persona-gallery h2 {
+  font-size: 15px;
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.persona-gallery ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.persona-gallery li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.persona-gallery li:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.persona-gallery li span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.fine-print {
+  margin: 16px 0 0;
+  color: var(--muted);
+  font-size: 12.5px;
+}
