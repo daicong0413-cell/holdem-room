@@ -25,6 +25,8 @@ export interface ViewOptions {
   /** Seat index of the viewer, or null for a spectator. */
   readonly viewerSeat: number | null;
   readonly isBotAt: (seatIndex: number) => boolean;
+  /** Persona id of the bot in this seat, or null for humans and empty seats. */
+  readonly personaAt: (seatIndex: number) => string | null;
   /** Cards to reveal regardless of showdown, keyed by seat index. */
   readonly reveal?: ReadonlyMap<number, string[]>;
   readonly canStartHand?: boolean;
@@ -69,6 +71,7 @@ export function buildTableView(table: TableState, options: ViewOptions): TableVi
       playerId: seat.playerId,
       name: seat.name,
       isBot: options.isBotAt(seat.index),
+      personaId: options.personaAt(seat.index),
       stack: seat.stack,
       committed: seat.committed,
       streetCommitted: seat.streetCommitted,

@@ -10,6 +10,7 @@
  */
 
 import { randomBytes } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { networkInterfaces } from "node:os";
@@ -29,6 +30,36 @@ import {
   parseClientMessage,
 } from "./protocol.ts";
 import { type RoomMember, type RoomSocket, Room } from "./room.ts";
+
+/**
+ * Reads `.env` if it is there, so a clone only has to fill in a file instead of
+ * exporting variables in the right shell. Deliberately tiny: no dependency, and
+ * a real environment variable always wins over the file.
+ *
+ * Runs before the constants below, because they read `process.env` on load.
+ */
+function loadDotEnv(path = ".env"): void {
+  let text: string;
+  try {
+    text = readFileSync(path, "utf8");
+  } catch {
+    return;
+  }
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (trimmed.length === 0 || trimmed.startsWith("#")) continue;
+    const equals = trimmed.indexOf("=");
+    if (equals < 1) continue;
+    const key = trimmed.slice(0, equals).trim();
+    let value = trimmed.slice(equals + 1).trim();
+    if (value.length > 1 && (value.startsWith('"') || value.startsWith("'")) && value.endsWith(value[0]!)) {
+      value = value.slice(1, -1);
+    }
+    if (process.env[key] === undefined) process.env[key] = value;
+  }
+}
+
+loadDotEnv();
 
 const PORT = Number(process.env.PORT ?? 8787);
 const HOST = process.env.HOST ?? "0.0.0.0";
@@ -99,6 +130,18 @@ function createAdvisorFromEnv(): Advisor | null {
 }
 
 const advisor = createAdvisorFromEnv();
+
+/**
+ * What the model backend is set to, for display. The key itself is never sent
+ * anywhere — only whether one has been configured.
+ */
+function llmStatus(): { enabled: boolean; model: string | null; baseUrl: string | null } {
+  return {
+    enabled: advisor !== null,
+    model: process.env.DEEPSEEK_MODEL?.trim() || null,
+    baseUrl: process.env.DEEPSEEK_BASE_URL?.trim() || null,
+  };
+}
 
 function createRoomCode(): string {
   for (let attempt = 0; attempt < 100; attempt++) {
@@ -220,7 +263,7 @@ const server = createServer((request, response) => {
   }
 
   if (url.pathname === "/api/personas") {
-    sendJson(response, 200, { personas: personaInfos() });
+    sendJson(response, 200, { personas: personaInfos(), llm: llmStatus() });
     return;
   }
 

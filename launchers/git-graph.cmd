@@ -2,12 +2,11 @@
 setlocal
 rem ===========================================================================
 rem  Rebuilds docs/git-graph.svg from the current history, then opens it in a
-rem  standalone app window (no tabs, no address bar). Double-click this file.
+rem  standalone app window. Double-click this file.
 rem ===========================================================================
 
 set "ROOT=%~dp0.."
 set "SVG=%ROOT%\docs\git-graph.svg"
-set "PROFILE=%ROOT%\.app-profile"
 
 cd /d "%ROOT%"
 
@@ -22,26 +21,7 @@ if not exist "%SVG%" (
   exit /b 1
 )
 
-call :findbrowser
-if not defined BROWSER (
-  echo Chrome or Edge was not found; opening in the default browser instead.
-  start "" "%SVG%"
-  exit /b 0
-)
-
 rem file:// needs forward slashes
 set "SVGURL=file:///%SVG:\=/%"
-start "" "%BROWSER%" --app="%SVGURL%" --user-data-dir="%PROFILE%" --no-first-run --no-default-browser-check
-exit /b 0
-
-rem --- locate a Chromium browser -------------------------------------------
-:findbrowser
-set "BROWSER="
-for %%P in (
-  "%ProgramFiles%\Google\Chrome\Application\chrome.exe"
-  "%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe"
-  "%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"
-  "%ProgramFiles%\Microsoft\Edge\Application\msedge.exe"
-  "%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe"
-) do if not defined BROWSER if exist %%P set "BROWSER=%%~P"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0open-app.ps1" -Url "%SVGURL%"
 exit /b 0

@@ -30,6 +30,13 @@ interface PersonaInfo {
   description?: string;
 }
 
+/** What the server has configured for the model backend. Never the key. */
+interface LlmStatus {
+  enabled: boolean;
+  model: string | null;
+  baseUrl: string | null;
+}
+
 interface SettingsBounds {
   [key: string]: { min: number; max: number };
 }
@@ -355,6 +362,7 @@ function Seat({
   winnings,
   bestCards,
   defaultBuyIn,
+  takenPersonas,
   onSit,
   onAddBot,
 }: {
@@ -373,6 +381,8 @@ function Seat({
   winnings: number;
   /** This seat's winning five, if they showed down a winner. */
   bestCards: ReadonlySet<string> | undefined;
+  /** Personas already sitting at this table. */
+  takenPersonas: ReadonlySet<string>;
   /** Pre-filled buy-in for this seat's amount box. */
   defaultBuyIn: number;
   onSit: (seat: number, buyIn: number) => void;
@@ -380,6 +390,9 @@ function Seat({
 }): ReactElement {
   const [persona, setPersona] = useState(personas[0]?.id ?? "gto");
   const [buyIn, setBuyIn] = useState(defaultBuyIn);
+  // One of each persona: a table with three GTOpros is a bug, not a feature.
+  const available = personas.filter((option) => !takenPersonas.has(option.id));
+  const chosen = available.some((option) => option.id === persona) ? persona : (available[0]?.id ?? "");
 
   if (seat.playerId === null) {
     return (
@@ -404,14 +417,14 @@ function Seat({
           </button>
           {canManage ? (
             <>
-              <select value={persona} onChange={(event) => setPersona(event.target.value)}>
-                {personas.map((option) => (
+              <select value={chosen} onChange={(event) => setPersona(event.target.value)} disabled={available.length === 0}>
+                {available.map((option) => (
                   <option key={option.id} value={option.id}>
                     {option.name}
                   </option>
                 ))}
               </select>
-              <button type="button" onClick={() => onAddBot(seat.index, persona)}>
+              <button type="button" onClick={() => onAddBot(seat.index, chosen)} disabled={available.length === 0}>
                 加机器人
               </button>
             </>
@@ -903,6 +916,10 @@ function TableScreen({
   const countdown = useCountdown(view.actionDeadlineMs);
   const nextHandCountdown = useCountdown(view.nextHandAtMs);
   const felt = useFeltScale();
+  const takenPersonas = useMemo(
+    () => new Set(view.seats.map((seat) => seat.personaId).filter((id): id is string => id !== null)),
+    [view.seats],
+  );
   // The dock follows the table, but only part of the way: a fullscreen table
   // should not turn the buttons into billboards.
   const uiScale = Math.min(1.45, Math.max(0.9, felt.scale));
@@ -1026,6 +1043,7 @@ function TableScreen({
                 winnings={payoutOf(seat.index)}
                 bestCards={bestBySeat.get(seat.index)}
                 defaultBuyIn={view.settings.startingStack}
+                takenPersonas={takenPersonas}
                 onSit={(index, amount) => onSend({ t: "sit", seat: index, buyIn: amount })}
                 onAddBot={(index, persona) => onSend({ t: "addBot", seat: index, persona })}
               />
@@ -1179,9 +1197,11 @@ function TableScreen({
 
 function Lobby({
   personas,
+  llm,
   onJoin,
 }: {
   personas: PersonaInfo[];
+  llm: LlmStatus | null;
   onJoin: (room: string, name: string) => void;
 }): ReactElement {
   const [name, setName] = useState(() => localStorage.getItem(NAME_KEY) ?? "");
@@ -1233,7 +1253,9 @@ function Lobby({
           ))}
         </ul>
         <p className="fine-print">
-          机器人的常规决策由本地蒙特卡洛胜率 + 人格参数完成，不消耗 token；只有关键决策点才会调用大模型。
+          {llm?.enabled
+            ? `大模型已接入：${llm.model ?? "默认模型"}${llm.baseUrl ? ` @ ${llm.baseUrl}` : ""}。常规决策仍在本地完成，只有关键决策点才调用它。`
+            : "大模型未接入——填好项目根目录的 .env（DEEPSEEK_API_KEY 等）重启即可开启。现在机器人完全靠本地蒙特卡洛 + 人格参数决策，不消耗 token。"}
         </p>
       </div>
     </div>
@@ -1243,6 +1265,7 @@ function Lobby({
 export function App(): ReactElement {
   const game = useGame();
   const [personas, setPersonas] = useState<PersonaInfo[]>([]);
+  const [llm, setLlm] = useState<LlmStatus | null>(null);
   const [bounds, setBounds] = useState<SettingsBounds>(FALLBACK_BOUNDS);
   const { connect } = game;
   const autoJoined = useRef(false);
@@ -1274,8 +1297,9 @@ export function App(): ReactElement {
     let cancelled = false;
     void fetch("/api/personas")
       .then((response) => response.json())
-      .then((payload: { personas?: PersonaInfo[] }) => {
+      .then((payload: { personas?: PersonaInfo[]; llm?: LlmStatus }) => {
         if (!cancelled && Array.isArray(payload.personas)) setPersonas(payload.personas);
+        if (!cancelled && payload.llm) setLlm(payload.llm);
       })
       .catch(() => {
         if (!cancelled) setPersonas([{ id: "gto", name: "GTOpro" }]);
@@ -1308,7 +1332,7 @@ export function App(): ReactElement {
           onRequestHistory={game.requestHistory}
         />
       ) : (
-        <Lobby personas={personas} onJoin={game.connect} />
+        <Lobby personas={personas} llm={llm} onJoin={game.connect} />
       )}
 
       {game.historyEntry ? <HistoryDialog entry={game.historyEntry} onClose={game.closeHistory} /> : null}

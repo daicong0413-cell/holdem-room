@@ -13,6 +13,8 @@ export interface SeatView {
   readonly playerId: string | null;
   readonly name: string;
   readonly isBot: boolean;
+  /** Persona id when a bot is sitting here; null for humans and empty seats. */
+  readonly personaId: string | null;
   readonly stack: number;
   readonly committed: number;
   readonly streetCommitted: number;

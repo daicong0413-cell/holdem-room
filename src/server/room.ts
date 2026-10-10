@@ -353,6 +353,20 @@ export class Room {
     return member?.isBot === true;
   };
 
+  /** Which persona a seated bot is playing, for the "one of each" rule. */
+  personaAtSeat = (seatIndex: number): string | null => {
+    const member = this.memberAtSeat(seatIndex);
+    return member?.isBot === true ? member.personaId : null;
+  };
+
+  /** One bot per persona: three GTOpros is not a table, it is a bug. */
+  private personaInUse(personaId: string): boolean {
+    for (const member of this.members.values()) {
+      if (member.isBot && member.seat !== null && member.personaId === personaId) return true;
+    }
+    return false;
+  }
+
   memberAtSeat(seatIndex: number): RoomMember | null {
     for (const member of this.members.values()) if (member.seat === seatIndex) return member;
     return null;
@@ -391,6 +405,7 @@ export class Room {
 
     const persona = this.personas.find((candidate) => candidate.id === personaId);
     if (!persona) throw new Error(`未知的人格：${personaId}`);
+    if (this.personaInUse(personaId)) throw new Error(`桌上已经有一个「${persona.name}」了`);
 
     const member: RoomMember = {
       playerId: `bot:${randomUUID()}`,
@@ -756,6 +771,7 @@ export class Room {
       roomCode: this.code,
       viewerSeat: member.seat,
       isBotAt: this.isBotSeat,
+      personaAt: this.personaAtSeat,
       canStartHand: this.canStartHand() && member.seat !== null,
       actionDeadlineMs: this.actionDeadline,
       nextHandAtMs: this.nextHandAt,

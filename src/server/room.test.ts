@@ -749,6 +749,15 @@ test("the host can turn automatic bot re-buys off", async () => {
   assert.equal(room.table.seats[1]!.stack, 200, "and buys back in once it is on again");
 });
 
+test("each persona can only be seated once", () => {
+  const harness = makeRoom({ autoStartSeconds: 0 });
+  const { room } = harness;
+  room.addBot(0, "gto");
+  assert.throws(() => room.addBot(1, "gto"), /已经有一个/, "a second GTOpro is refused");
+  room.addBot(1, "lag");
+  assert.notEqual(room.table.seats[1]!.playerId, null, "a different persona is fine");
+});
+
 test("somebody can take a seat mid-hand and is dealt in next hand", async () => {
   const harness = makeRoom({ autoStartSeconds: 0 });
   const { room } = harness;

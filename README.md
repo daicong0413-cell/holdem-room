@@ -22,18 +22,30 @@ npm start            # 启动服务
 ## 接入你自己的大模型 key
 
 默认**不配 key 也能玩**，机器人只用本地蒙特卡洛 + 人格参数决策，一分钱不花。
-配上 key 之后，只有"关键决策点"（大底池、面对全下、河牌大注、边缘跟注）才会问模型：
+配上 key 之后，只有"关键决策点"（大底池、面对全下、河牌大注、边缘跟注）才会问模型。
 
-```powershell
-# PowerShell
-$env:DEEPSEEK_API_KEY = "sk-你的key"
+**推荐做法：把 `.env.example` 复制成 `.env` 再填。** 服务端启动时会自动读它，
+不需要任何依赖，也不用管你用的是什么 shell：
+
+```bash
+cp .env.example .env      # Windows: copy .env.example .env
+# 然后编辑 .env，至少填 DEEPSEEK_API_KEY
 npm start
 ```
 
-```bash
-# bash
-DEEPSEEK_API_KEY=sk-你的key npm start
+`.env` 已经在 `.gitignore` 里，不会被提交。真实的系统环境变量优先级高于 `.env`，
+所以临时覆盖依然有效：
+
+```powershell
+$env:DEEPSEEK_API_KEY = "sk-你的key"; npm start
 ```
+
+**接口不绑定 DeepSeek**。`DEEPSEEK_BASE_URL` 指向任何兼容 OpenAI `/chat/completions`
+的服务都行——OpenAI、月之暗面、本地 Ollama 都可以，`DEEPSEEK_MODEL` 填对应模型名。
+不填就是各家的默认值。
+
+打开大厅页面就能看到当前状态：接了哪个模型、指向哪个地址；**key 本身永远不会发给浏览器**，
+前端只知道"配了"还是"没配"。
 
 启动横幅会告诉你大模型是开是关。开启后 `/healthz` 会返回调用次数和 token 消耗：
 
@@ -211,6 +223,8 @@ Edge 同理，把 `chrome.exe` 换成 `msedge.exe` 就行。
 
 ### 几个细节
 
+- 窗口是 **16:9 并且居中**的：启动器按屏幕可用区算出「高度 92% 或 16:9 上限」再水平垂直居中
+  （2560×1400 的屏幕上是 2290×1288，左右各留 135px）。想换尺寸就改 `launchers/open-app.ps1` 里那两个默认值。
 - 启动器用了独立的浏览器配置目录 `.app-profile`，所以这个"应用窗口"跟你日常浏览的
   历史、扩展、登录状态是分开的 —— 更像一个独立软件，也不会把 `127.0.0.1` 塞进你的浏览记录。
 - 不想要独立配置，就把 `--user-data-dir` 那段删掉，它会用你平时的 Chrome。

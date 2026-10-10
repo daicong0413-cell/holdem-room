@@ -153,9 +153,9 @@ export function renderGraph(commits: readonly Commit[], columns: Map<string, num
   const parts: string[] = [];
   parts.push(
     `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" ` +
-      // Scale to whatever it is opened in, keeping the viewBox ratio: a fixed
-      // pixel size renders as a small block in the corner of a big window.
-      `style="width:100%;height:auto;max-width:${Math.round(width * 1.6)}px" ` +
+      // Fill the window and centre the drawing in it. A fixed pixel height left
+      // a white band under the graph; this leaves at worst an even, dark margin.
+      `style="width:100%;height:100vh;display:block;background:#0b0f14" ` +
       `font-family="ui-sans-serif, -apple-system, 'Segoe UI', 'Microsoft YaHei', sans-serif">`,
   );
   parts.push(`<rect width="${width}" height="${height}" fill="#0b0f14"/>`);
