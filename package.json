@@ -1,0 +1,43 @@
+{
+  "name": "holdem-room",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Texas Hold'em online rooms with LLM-driven personality NPCs",
+  "engines": {
+    "node": ">=22.6"
+  },
+  "scripts": {
+    "test": "node --test --test-isolation=none \"src/**/*.test.ts\"",
+    "test:engine": "node --test --test-isolation=none \"src/engine/*.test.ts\"",
+    "test:server": "node --test --test-isolation=none \"src/server/*.test.ts\"",
+    "typecheck": "tsc --noEmit",
+    "start": "node src/server/main.ts",
+    "server": "node src/server/main.ts",
+    "dev:server": "node --watch src/server/main.ts",
+    "dev:web": "vite",
+    "build:web": "vite build",
+    "demo:hand": "node scripts/hand-demo.ts",
+    "demo:equity": "node scripts/equity-demo.ts",
+    "bench:equity": "node scripts/bench-equity.ts",
+    "seed": "node scripts/seed-bots.ts",
+    "session": "node scripts/play-session.ts",
+    "smoke": "node scripts/smoke-client.ts",
+    "mock:llm": "node scripts/mock-deepseek.ts",
+    "graph": "git log --all --date-order --pretty=format:\"%H|%P|%D|%s\" > .git-graph.txt && node scripts/git-graph.ts .git-graph.txt docs/git-graph.svg"
+  },
+  "dependencies": {
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/ws": "^8.18.2",
+    "@vitejs/plugin-react": "^6.1.2",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4"
+  }
+}

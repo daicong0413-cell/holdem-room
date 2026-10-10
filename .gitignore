@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.npm-cache/
+.chrome-demo/
+.git-graph.txt
+*.log
+
+# secrets: never commit API keys or room credentials
+.env
+.env.local
+config/local.json
+
+.app-profile/
+.chrome-check/
+.chrome-demo/
