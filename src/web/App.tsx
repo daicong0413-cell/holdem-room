@@ -364,6 +364,7 @@ function Seat({
   defaultBuyIn,
   takenPersonas,
   onSit,
+  onStand,
   onAddBot,
 }: {
   seat: SeatView;
@@ -386,6 +387,8 @@ function Seat({
   /** Pre-filled buy-in for this seat's amount box. */
   defaultBuyIn: number;
   onSit: (seat: number, buyIn: number) => void;
+  /** Give up the seat; the server defers it until the hand settles. */
+  onStand: () => void;
   onAddBot: (seat: number, persona: string) => void;
 }): ReactElement {
   const [persona, setPersona] = useState(personas[0]?.id ?? "gto");
@@ -481,7 +484,14 @@ function Seat({
             </span>
           </span>
           {/* Chips live on their own line, under the name. */}
-          <span className="seat-stack">{money(seat.stack)}</span>
+          <span className="seat-row">
+            <span className="seat-stack">{money(seat.stack)}</span>
+            {seat.isYou ? (
+              <button type="button" className="stand-btn" onClick={onStand} title="离座，把筹码收回来">
+                离座
+              </button>
+            ) : null}
+          </span>
         </div>
         {/* Below the plate, never over the cards. */}
         {isWinner ? <span className="win-badge">WIN +{money(winnings)}</span> : null}
@@ -1045,6 +1055,7 @@ function TableScreen({
                 defaultBuyIn={view.settings.startingStack}
                 takenPersonas={takenPersonas}
                 onSit={(index, amount) => onSend({ t: "sit", seat: index, buyIn: amount })}
+                onStand={() => onSend({ t: "stand" })}
                 onAddBot={(index, persona) => onSend({ t: "addBot", seat: index, persona })}
               />
             );

@@ -846,6 +846,24 @@ input[type="number"] {
   color: var(--muted);
 }
 
+/* Only ever rendered on your own plate. */
+.stand-btn {
+  border: 1px solid var(--line);
+  background: rgb(255 255 255 / 0.06);
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1;
+  padding: 3px 7px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.stand-btn:hover {
+  color: var(--text);
+  border-color: #f85149;
+  background: rgb(248 81 73 / 0.14);
+}
+
 /* Checkbox rows in the settings dialog read as one line, not a label above a box. */
 label.check {
   flex-direction: row;

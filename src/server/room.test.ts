@@ -699,6 +699,41 @@ test("a tournament refuses re-buys outright", async () => {
   assert.throws(() => room.rebuy(alice), /锦标赛不能重新买入/);
 });
 
+test("standing up frees the seat so you can sit somewhere else", () => {
+  const harness = makeRoom({ autoStartSeconds: 0 });
+  const { room } = harness;
+  const alice = room.join("Alice");
+  room.sit(alice, 0, 300);
+  assert.throws(() => room.sit(alice, 2, 300), /离座/, "one seat at a time");
+
+  room.stand(alice);
+  assert.equal(room.table.seats[0]!.playerId, null, "the old seat is free");
+  assert.equal(alice.bankroll, 300, "the chips come back off the table");
+
+  room.sit(alice, 2, 500);
+  assert.equal(room.table.seats[2]!.stack, 500, "and the new seat is hers");
+});
+
+test("leaving mid-hand waits for the hand to settle", async () => {
+  const harness = makeRoom({ autoStartSeconds: 0 });
+  const { room } = harness;
+  const alice = room.join("Alice");
+  room.sit(alice, 0, 300);
+  room.addBot(1, "gto");
+  room.startHand();
+
+  room.stand(alice);
+  assert.equal(alice.seat, 0, "still seated while the hand runs");
+  assert.notEqual(room.table.seats[0]!.playerId, null, "seat is not released yet");
+
+  await playOut(harness);
+  assert.equal(room.table.seats[0]!.playerId, null, "released once the hand settled");
+  assert.equal(alice.seat, null);
+  // Whatever the hand left her with — the point is it came back off the table
+  // rather than vanishing with the seat.
+  assert.ok(alice.bankroll > 0, `the chips came back (got ${alice.bankroll})`);
+});
+
 test("everyone picks their own stack, within the table's limits", () => {
   const harness = makeRoom({ autoStartSeconds: 0 });
   const { room } = harness;

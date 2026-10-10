@@ -43,7 +43,8 @@ import { buildTableView, buildHandHistoryEntry } from "./view.ts";
 /** How many completed hands a room keeps for the history panel. */
 export const MAX_HISTORY_HANDS = 100;
 
-export interface RoomMember {  readonly playerId: string;
+export interface RoomMember {
+  readonly playerId: string;
   readonly token: string;
   name: string;
   seat: number | null;
@@ -52,6 +53,8 @@ export interface RoomMember {  readonly playerId: string;
   readonly personaId: string | null;
   /** Chips this member has taken off the table; used for a future bankroll view. */
   bankroll: number;
+  /** Asked to leave during a hand; the seat is released once it settles. */
+  leaving: boolean;
 }
 
 export interface RoomSocket {
@@ -315,6 +318,7 @@ export class Room {
       isBot: false,
       personaId: null,
       bankroll: 0,
+      leaving: false,
     };
     this.members.set(member.playerId, member);
     this.byToken.set(member.token, member);
@@ -389,7 +393,7 @@ export class Room {
     const seat = this.table.seats[seatIndex];
     if (!seat) throw new Error(`没有 ${seatIndex} 号座位`);
     if (seat.playerId !== null) throw new Error("该座位已经被占用");
-    if (member.seat !== null) throw new Error("你已经在座上了，请先离座");
+    if (member.seat !== null) throw new Error("你已经在座上了，先点自己座位上的「离座」再换座");
 
     const amount = this.resolveBuyIn(buyIn);
     seatPlayer(this.table, seatIndex, { playerId: member.playerId, name: member.name, stack: amount });
@@ -416,6 +420,7 @@ export class Room {
       isBot: true,
       personaId: persona.id,
       bankroll: 0,
+      leaving: false,
     };
     seatPlayer(this.table, seatIndex, { playerId: member.playerId, name: member.name, stack: this.settings.startingStack });
     this.members.set(member.playerId, member);
@@ -423,23 +428,49 @@ export class Room {
     this.afterStateChange();
   }
 
+  /**
+   * Gives up the seat and takes the chips off the table.
+   *
+   * Mid-hand this is deferred, *even for a player who already folded*: a seat's
+   * committed chips are part of the pot maths, so yanking one out from under a
+   * live hand would corrupt the result. They sit out and leave when it settles.
+   */
   stand(member: RoomMember): void {
     const seatIndex = member.seat;
     if (seatIndex === null) throw new Error("你还没有入座");
     const seat = this.table.seats[seatIndex]!;
 
-    if (this.handInProgress() && seat.inHand && !seat.folded) {
-      // Cannot yank a player out of a live hand; they sit out from the next one.
+    if (this.handInProgress() && seat.inHand) {
       seat.sittingOut = true;
-      member.bankroll += 0;
+      if (!member.leaving) {
+        member.leaving = true;
+        this.broadcastChat(member.name, "这手打完就离座");
+      }
       this.afterStateChange();
       return;
     }
 
-    member.bankroll += seat.stack;
+    this.releaseSeat(member);
+    this.afterStateChange();
+  }
+
+  private releaseSeat(member: RoomMember): void {
+    const seatIndex = member.seat;
+    if (seatIndex === null) return;
+    member.bankroll += this.table.seats[seatIndex]!.stack;
     removePlayer(this.table, seatIndex);
     member.seat = null;
-    this.afterStateChange();
+    member.leaving = false;
+  }
+
+  /** Seat anyone who asked to leave while a hand was running. */
+  private removeDepartingPlayers(): void {
+    if (this.handInProgress()) return;
+    for (const member of this.members.values()) {
+      if (!member.leaving || member.seat === null) continue;
+      this.releaseSeat(member);
+      this.broadcastChat(member.name, "离座");
+    }
   }
 
   // ---------------------------------------------------------------- hand cycle
@@ -595,6 +626,7 @@ export class Room {
   private afterStateChange(): void {
     this.archiveCompletedHand();
     this.topUpBustedBots();
+    this.removeDepartingPlayers();
     this.scheduleAutoStart();
     this.broadcast();
     const hand = this.table.hand;
