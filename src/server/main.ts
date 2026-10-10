@@ -544,6 +544,9 @@ function handleMessage(connection: Connection, message: ClientMessage, adapter: 
     case "addBot":
       room.addBot(message.seat, message.persona);
       break;
+    case "removeBot":
+      room.removeBot(message.seat);
+      break;
     case "action":
       room.act(member.playerId, message.action);
       break;

@@ -175,6 +175,7 @@ export type ClientMessage =
   | { readonly t: "sit"; readonly seat: number; readonly buyIn?: number }
   | { readonly t: "stand" }
   | { readonly t: "addBot"; readonly seat: number; readonly persona: string }
+  | { readonly t: "removeBot"; readonly seat: number }
   | { readonly t: "action"; readonly action: PlayerAction }
   | { readonly t: "startHand" }
   | { readonly t: "rebuy"; readonly buyIn?: number }
@@ -230,6 +231,11 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       const source = parsed as { seat?: unknown; persona?: unknown };
       if (!Number.isInteger(source.seat) || typeof source.persona !== "string") return null;
       return { t: "addBot", seat: source.seat as number, persona: source.persona };
+    }
+    case "removeBot": {
+      const source = parsed as { seat?: unknown };
+      if (!Number.isInteger(source.seat)) return null;
+      return { t: "removeBot", seat: source.seat as number };
     }
     case "action": {
       const source = parsed as { action?: unknown };

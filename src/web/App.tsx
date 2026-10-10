@@ -368,6 +368,7 @@ function Seat({
   takenPersonas,
   onSit,
   onStand,
+  onRemoveBot,
   onAddBot,
 }: {
   seat: SeatView;
@@ -392,6 +393,8 @@ function Seat({
   onSit: (seat: number, buyIn: number) => void;
   /** Give up the seat; the server defers it until the hand settles. */
   onStand: () => void;
+  /** Takes a bot off the table; only offered between hands. */
+  onRemoveBot: (seat: number) => void;
   onAddBot: (seat: number, persona: string) => void;
 }): ReactElement {
   const [persona, setPersona] = useState(personas[0]?.id ?? "gto");
@@ -492,6 +495,16 @@ function Seat({
             {seat.isYou ? (
               <button type="button" className="stand-btn" onClick={onStand} title="离座，把筹码收回来">
                 离座
+              </button>
+            ) : null}
+            {!seat.isYou && seat.isBot && canManage ? (
+              <button
+                type="button"
+                className="stand-btn"
+                onClick={() => onRemoveBot(seat.index)}
+                title="让这个机器人离桌"
+              >
+                离桌
               </button>
             ) : null}
           </span>
@@ -956,6 +969,7 @@ function TableScreen({
   view,
   personas,
   bounds,
+  llm,
   status,
   chat,
   onSend,
@@ -965,6 +979,8 @@ function TableScreen({
   view: TableView;
   personas: PersonaInfo[];
   bounds: SettingsBounds;
+  /** Shown in the sidebar footer so the model setup is visible while playing. */
+  llm: LlmStatus | null;
   status: Status;
   chat: ChatLine[];
   onSend: (message: ClientMessage) => void;
@@ -1107,6 +1123,7 @@ function TableScreen({
                 takenPersonas={takenPersonas}
                 onSit={(index, amount) => onSend({ t: "sit", seat: index, buyIn: amount })}
                 onStand={() => onSend({ t: "stand" })}
+                onRemoveBot={(index) => onSend({ t: "removeBot", seat: index })}
                 onAddBot={(index, persona) => onSend({ t: "addBot", seat: index, persona })}
               />
             );
@@ -1155,6 +1172,31 @@ function TableScreen({
             ))}
           </ol>
         )}
+
+        {/* Facts that are useful while playing but do not deserve top-bar space. */}
+        <div className="sidebar-foot">
+          <div className="foot-row">
+            <span>大模型</span>
+            <strong className={llm?.enabled ? "on" : undefined}>
+              {llm?.enabled ? (llm.model ?? "默认模型") : "未接入 · 本地决策"}
+            </strong>
+          </div>
+          <div className="foot-row">
+            <span>房间码</span>
+            <strong>{view.roomCode}</strong>
+          </div>
+          <div className="foot-row">
+            <span>盲注</span>
+            <strong>
+              {view.settings.smallBlind}/{view.settings.bigBlind}
+              {view.settings.level > 1 ? ` · 第 ${view.settings.level} 级` : ""}
+            </strong>
+          </div>
+          <div className="foot-row">
+            <span>你的位置</span>
+            <strong>{heroSeated ? `${heroSeat + 1} 号位` : "旁观"}</strong>
+          </div>
+        </div>
       </aside>
 
       <footer className="action-dock">
@@ -1503,6 +1545,7 @@ export function App(): ReactElement {
           view={game.view}
           personas={personas}
           bounds={bounds}
+          llm={llm}
           status={game.status}
           chat={game.chat}
           onSend={game.send}

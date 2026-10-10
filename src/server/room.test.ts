@@ -734,6 +734,32 @@ test("leaving mid-hand waits for the hand to settle", async () => {
   assert.ok(alice.bankroll > 0, `the chips came back (got ${alice.bankroll})`);
 });
 
+test("a bot can be taken off the table, freeing its persona", () => {
+  const harness = makeRoom({ autoStartSeconds: 0 });
+  const { room } = harness;
+  room.addBot(0, "gto");
+  room.removeBot(0);
+  assert.equal(room.table.seats[0]!.playerId, null, "the seat is free");
+  assert.doesNotThrow(() => room.addBot(0, "gto"), "and the same persona can be seated again");
+  assert.throws(() => room.removeBot(1), /没有机器人/, "an empty seat has nothing to remove");
+});
+
+test("removing a bot mid-hand waits for the hand to settle", async () => {
+  const harness = makeRoom({ autoStartSeconds: 0 });
+  const { room } = harness;
+  const alice = room.join("Alice");
+  room.sit(alice, 0, 300);
+  room.addBot(1, "gto");
+  room.startHand();
+
+  room.removeBot(1);
+  assert.notEqual(room.table.seats[1]!.playerId, null, "still seated while the hand runs");
+
+  await playOut(harness);
+  assert.equal(room.table.seats[1]!.playerId, null, "gone once the hand settled");
+  assert.doesNotThrow(() => room.addBot(1, "gto"), "persona freed");
+});
+
 test("everyone picks their own stack, within the table's limits", () => {
   const harness = makeRoom({ autoStartSeconds: 0 });
   const { room } = harness;

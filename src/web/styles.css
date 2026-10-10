@@ -1290,6 +1290,40 @@ label.check input {
   gap: 8px;
 }
 
+/* Pinned to the bottom of the sidebar: reference facts, not part of the log. */
+.sidebar-foot {
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  font-size: 12px;
+}
+
+.foot-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.foot-row span {
+  color: var(--muted);
+  flex: 0 0 auto;
+}
+
+.foot-row strong {
+  color: var(--text);
+  font-weight: 600;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.foot-row strong.on {
+  color: #3fb950;
+}
+
 .sidebar h3 {
   font-size: 12.5px;
   text-transform: uppercase;

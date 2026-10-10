@@ -463,13 +463,49 @@ export class Room {
     member.leaving = false;
   }
 
+  /** Takes a bot off the table for good, freeing its persona for another seat. */
+  removeBot(seatIndex: number): void {
+    const seat = this.table.seats[seatIndex];
+    if (!seat) throw new Error(`没有 ${seatIndex} 号座位`);
+    const member = this.memberAtSeat(seatIndex);
+    if (member?.isBot !== true) throw new Error("那个座位上没有机器人");
+
+    if (this.handInProgress() && seat.inHand) {
+      // Same rule as a player leaving: the seat's chips are part of the pot.
+      seat.sittingOut = true;
+      if (!member.leaving) {
+        member.leaving = true;
+        this.broadcastChat(member.name, "这手打完就离桌");
+      }
+      this.afterStateChange();
+      return;
+    }
+
+    this.releaseSeat(member);
+    this.broadcastChat(member.name, "离桌");
+    this.forgetMember(member);
+    this.afterStateChange();
+  }
+
+  /** Drops a bot's membership entirely, so its persona is free again. */
+  private forgetMember(member: RoomMember): void {
+    this.members.delete(member.playerId);
+    this.byToken.delete(member.token);
+  }
+
   /** Seat anyone who asked to leave while a hand was running. */
   private removeDepartingPlayers(): void {
     if (this.handInProgress()) return;
-    for (const member of this.members.values()) {
+    for (const member of [...this.members.values()]) {
       if (!member.leaving || member.seat === null) continue;
       this.releaseSeat(member);
-      this.broadcastChat(member.name, "离座");
+      if (member.isBot) {
+        this.broadcastChat(member.name, "离桌");
+        // Gone for good; a human keeps their token so they can sit again later.
+        this.forgetMember(member);
+      } else {
+        this.broadcastChat(member.name, "离座");
+      }
     }
   }
 
