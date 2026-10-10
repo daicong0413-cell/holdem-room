@@ -27,5 +27,5 @@ pause
 exit /b 1
 
 :open
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0open-app.ps1" -Url "%URL%" -TitleLike "*德州扑克*"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0open-app.ps1" -Url "%URL%"
 exit /b 0

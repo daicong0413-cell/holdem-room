@@ -23,5 +23,5 @@ if not exist "%SVG%" (
 
 rem file:// needs forward slashes
 set "SVGURL=file:///%SVG:\=/%"
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0open-app.ps1" -Url "%SVGURL%" -TitleLike "*git-graph*"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0open-app.ps1" -Url "%SVGURL%"
 exit /b 0

@@ -1,4 +1,4 @@
-<#
+﻿<#
   Opens a URL in a standalone app window: no tabs, no address bar, in the
   taskbar as its own entry — the closest thing to a desktop app without
   shipping one.
@@ -12,14 +12,17 @@
 #>
 param(
   [Parameter(Mandatory = $true)][string]$Url,
-  # Window title of the app window to close first, e.g. "*德州扑克*".
-  [string]$TitleLike = "",
   [switch]$DryRun
 )
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path $PSScriptRoot -Parent
 $profileDir = Join-Path $root ".app-profile"
+
+# Window titles of the windows we own, kept inside the script as ASCII on
+# purpose: non-ASCII text passed from cmd to powershell.exe goes through the
+# ANSI code page and arrives mangled, which would silently break the match.
+$titleLike = if ($Url -like "*graph*") { "*graph*" } else { "*NPC*" }
 
 function Find-Browser {
   foreach ($candidate in @(
@@ -68,11 +71,11 @@ if (-not $browser) {
 # Matched by window title rather than by command line: reading another process's
 # command line needs CIM, which is not always permitted. Ordinary browsing
 # windows have different titles, so they are left alone.
-if ($TitleLike.Length -gt 0) {
+if ($titleLike.Length -gt 0) {
   Get-Process chrome, msedge -ErrorAction SilentlyContinue |
-    Where-Object { $_.MainWindowTitle -like $TitleLike } |
+    Where-Object { $_.MainWindowTitle -like $titleLike } |
     ForEach-Object {
-      Write-Host "关闭已打开的 $($_.MainWindowTitle)"
+      Write-Host "closing the app window that is already open"
       Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
     }
   Start-Sleep -Milliseconds 800
@@ -110,9 +113,9 @@ public static class AppWindow {
 
   # If Chrome handed the request to an instance that was already running, the
   # process we started is not the one holding the window. Fall back to the title.
-  if (-not $placed -and $TitleLike.Length -gt 0) {
+  if (-not $placed -and $titleLike.Length -gt 0) {
     Get-Process chrome, msedge -ErrorAction SilentlyContinue |
-      Where-Object { $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle -like $TitleLike } |
+      Where-Object { $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle -like $titleLike } |
       Select-Object -First 1 |
       ForEach-Object { [AppWindow]::MoveWindow($_.MainWindowHandle, $x, $y, $width, $height, $true) | Out-Null }
   }
