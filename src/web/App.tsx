@@ -34,8 +34,9 @@ interface PersonaInfo {
 /** What the server has configured for the model backend. Never the key. */
 interface LlmStatus {
   enabled: boolean;
-  model: string | null;
-  baseUrl: string | null;
+  /** Always the model actually in use, defaults resolved by the server. */
+  model: string;
+  baseUrl: string;
   /** True only when this browser is on the machine running the server. */
   configurable: boolean;
 }
@@ -222,6 +223,14 @@ function useGame(): {
   const [status, setStatus] = useState<Status>("idle");
   const [view, setView] = useState<TableView | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+
+  // Notices used to stay up until dismissed by hand. A few seconds is enough to
+  // read one, and a new notice replaces it.
+  useEffect(() => {
+    if (notice === null) return;
+    const timer = setTimeout(() => setNotice(null), 7000);
+    return () => clearTimeout(timer);
+  }, [notice]);
   const [chat, setChat] = useState<ChatLine[]>([]);
   const [historyEntry, setHistoryEntry] = useState<HandHistoryEntry | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
@@ -755,18 +764,28 @@ function SettingsDialog({
     />
   );
 
+  /**
+   * Sends only what actually differs from the server's view.
+   *
+   * Sending every field back meant any value that did not survive the round
+   * trip — seconds vs milliseconds, say — looked like an edit, and tripped
+   * guards for settings the player never touched.
+   */
   const save = (): void => {
+    const current = view.settings;
+    const timeoutMs = Math.round(draft.actionTimeoutSeconds * 1000);
+
     onSave({
-      seats: draft.seats,
-      smallBlind: draft.smallBlind,
-      bigBlind: draft.bigBlind,
-      startingStack: draft.startingStack,
-      actionTimeoutMs: Math.round(draft.actionTimeoutSeconds * 1000),
-      mode: draft.mode,
-      blindLevelHands: draft.blindLevelHands,
-      blindGrowth: draft.blindGrowth,
-      autoStartSeconds: draft.autoStartSeconds,
-      botAutoRebuy: draft.botAutoRebuy,
+      ...(draft.seats !== current.seats ? { seats: draft.seats } : {}),
+      ...(draft.smallBlind !== current.smallBlind ? { smallBlind: draft.smallBlind } : {}),
+      ...(draft.bigBlind !== current.bigBlind ? { bigBlind: draft.bigBlind } : {}),
+      ...(draft.startingStack !== current.startingStack ? { startingStack: draft.startingStack } : {}),
+      ...(timeoutMs !== current.actionTimeoutMs ? { actionTimeoutMs: timeoutMs } : {}),
+      ...(draft.mode !== current.mode ? { mode: draft.mode } : {}),
+      ...(draft.blindLevelHands !== current.blindLevelHands ? { blindLevelHands: draft.blindLevelHands } : {}),
+      ...(draft.blindGrowth !== current.blindGrowth ? { blindGrowth: draft.blindGrowth } : {}),
+      ...(draft.autoStartSeconds !== current.autoStartSeconds ? { autoStartSeconds: draft.autoStartSeconds } : {}),
+      ...(draft.botAutoRebuy !== current.botAutoRebuy ? { botAutoRebuy: draft.botAutoRebuy } : {}),
     });
     onClose();
   };
@@ -1178,7 +1197,7 @@ function TableScreen({
           <div className="foot-row">
             <span>大模型</span>
             <strong className={llm?.enabled ? "on" : undefined}>
-              {llm?.enabled ? (llm.model ?? "默认模型") : "未接入 · 本地决策"}
+              {llm?.enabled ? llm.model : "未接入 · 本地决策"}
             </strong>
           </div>
           <div className="foot-row">
@@ -1465,7 +1484,7 @@ function Lobby({
         </ul>
         <p className="fine-print">
           {llm?.enabled
-            ? `大模型已接入：${llm.model ?? "默认模型"}${llm.baseUrl ? ` @ ${llm.baseUrl}` : ""}。常规决策仍在本地完成，只有关键决策点才调用它。`
+            ? `大模型已接入：${llm.model} @ ${llm.baseUrl}。常规决策仍在本地完成，只有关键决策点才调用它。`
             : "大模型未接入，机器人完全靠本地蒙特卡洛 + 人格参数决策，不消耗 token。"}
         </p>
         {llm?.configurable ? (

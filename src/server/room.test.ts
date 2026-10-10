@@ -734,6 +734,39 @@ test("leaving mid-hand waits for the hand to settle", async () => {
   assert.ok(alice.bankroll > 0, `the chips came back (got ${alice.bankroll})`);
 });
 
+test("saving the settings dialog mid-game does not trip the blind guard", async () => {
+  const harness = makeRoom({ autoStartSeconds: 0 });
+  const { room } = harness;
+  const alice = room.join("Alice");
+  room.sit(alice, 0);
+  room.addBot(1, "gto");
+  room.startHand();
+  await playOut(harness);
+
+  // The dialog sends every field back, exactly as the view reported it, with
+  // only the two toggles actually changed. A lossy round-trip here made the
+  // server think the blind schedule had been edited.
+  const settings = room.viewFor(alice).settings;
+  room.configure(alice.playerId, {
+    seats: settings.seats,
+    smallBlind: settings.smallBlind,
+    bigBlind: settings.bigBlind,
+    startingStack: settings.startingStack,
+    actionTimeoutMs: Math.round(settings.actionTimeoutMs / 1000) * 1000,
+    mode: settings.mode,
+    blindLevelHands: settings.blindLevelHands,
+    blindGrowth: settings.blindGrowth,
+    autoStartSeconds: 12,
+    botAutoRebuy: false,
+  });
+
+  const after = room.viewFor(alice).settings;
+  assert.equal(after.autoStartSeconds, 12, "the toggle that was changed took effect");
+  assert.equal(after.botAutoRebuy, false);
+  assert.equal(after.blindLevelHands, settings.blindLevelHands, "and nothing else moved");
+  assert.equal(after.blindGrowth, settings.blindGrowth);
+});
+
 test("a bot can be taken off the table, freeing its persona", () => {
   const harness = makeRoom({ autoStartSeconds: 0 });
   const { room } = harness;

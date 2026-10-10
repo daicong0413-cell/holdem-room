@@ -19,7 +19,7 @@ import { fileURLToPath } from "node:url";
 
 import { WebSocket, WebSocketServer } from "ws";
 
-import { type Advisor, DeepSeekAdvisor } from "./advisor.ts";
+import { type Advisor, DEFAULT_BASE_URL, DEFAULT_MODEL, DeepSeekAdvisor } from "./advisor.ts";
 import { type EnvUpdates, updateEnvFile } from "./env-file.ts";
 import { type BotBrain, PERSONAS, findPersona, makeBotDecider, personaInfos } from "./bots.ts";
 import {
@@ -141,14 +141,16 @@ let advisor = createAdvisorFromEnv();
  */
 function llmStatus(configurable: boolean): {
   enabled: boolean;
-  model: string | null;
-  baseUrl: string | null;
+  model: string;
+  baseUrl: string;
   configurable: boolean;
 } {
+  // Report the model actually in use, not "unset": the whole point of showing
+  // it is to answer "which model are the bots talking to?".
   return {
     enabled: advisor !== null,
-    model: process.env.DEEPSEEK_MODEL?.trim() || null,
-    baseUrl: process.env.DEEPSEEK_BASE_URL?.trim() || null,
+    model: process.env.DEEPSEEK_MODEL?.trim() || DEFAULT_MODEL,
+    baseUrl: process.env.DEEPSEEK_BASE_URL?.trim() || DEFAULT_BASE_URL,
     configurable,
   };
 }
