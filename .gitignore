@@ -18,3 +18,6 @@ config/local.json
 .workbuddy/
 miniprogram/
 .wbapp_*.genie
+
+# 演示/测试用的浏览器配置目录
+.chrome-*/

@@ -806,45 +806,55 @@ function SettingsDialog({
             {number("bigBlind", "bigBlind")}
           </label>
 
-          <label className="switch">
-            <input
-              type="checkbox"
-              checked={draft.autoStartSeconds > 0}
-              onChange={(event) =>
-                setDraft({ ...draft, autoStartSeconds: event.target.checked ? autoStartLast : 0 })
-              }
-            />
-            <span className="track" aria-hidden="true" />
+          {/* Same shape as every other field: title on top, control below. */}
+          <div className="switch-field">
             <span>自动开始下一手牌</span>
-          </label>
-
-          {draft.autoStartSeconds > 0 ? (
-            <label>
-              <span>间隔（秒）</span>
+            <label className="switch">
               <input
-                type="number"
-                min={bound("autoStartSeconds").min}
-                max={bound("autoStartSeconds").max}
-                value={draft.autoStartSeconds}
-                onChange={(event) => {
-                  const value = Number(event.target.value);
-                  setDraft({ ...draft, autoStartSeconds: value });
-                  if (value > 0) setAutoStartLast(value);
-                }}
+                type="checkbox"
+                checked={draft.autoStartSeconds > 0}
+                onChange={(event) =>
+                  setDraft({ ...draft, autoStartSeconds: event.target.checked ? autoStartLast : 0 })
+                }
               />
+              <span className="track" aria-hidden="true" />
+              <span className="switch-state">{draft.autoStartSeconds > 0 ? "开启" : "关闭"}</span>
             </label>
-          ) : (
-            <p className="fine-print">手动开始：每手结束后点行动条上的「开始下一手」。</p>
-          )}
+            {draft.autoStartSeconds > 0 ? (
+              <label className="switch-sub">
+                <span>间隔（秒）</span>
+                <input
+                  type="number"
+                  min={bound("autoStartSeconds").min}
+                  max={bound("autoStartSeconds").max}
+                  value={draft.autoStartSeconds}
+                  onChange={(event) => {
+                    const value = Number(event.target.value);
+                    setDraft({ ...draft, autoStartSeconds: value });
+                    if (value > 0) setAutoStartLast(value);
+                  }}
+                />
+              </label>
+            ) : (
+              <em className="switch-note">手动开始：每手结束点「开始下一手」</em>
+            )}
+          </div>
 
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={draft.botAutoRebuy}
-              onChange={(event) => setDraft({ ...draft, botAutoRebuy: event.target.checked })}
-            />
-            <span>机器人输光后自动重新买入（现金局）</span>
-          </label>
+          <div className="switch-field">
+            <span>机器人输光后自动重新买入</span>
+            <label className="switch">
+              <input
+                type="checkbox"
+                checked={draft.botAutoRebuy}
+                onChange={(event) => setDraft({ ...draft, botAutoRebuy: event.target.checked })}
+              />
+              <span className="track" aria-hidden="true" />
+              <span className="switch-state">{draft.botAutoRebuy ? "开启" : "关闭"}</span>
+            </label>
+            <em className="switch-note">
+              {draft.botAutoRebuy ? "输光的机器人会自动补齐筹码" : "输光的机器人坐着看戏，不再补筹码"}
+            </em>
+          </div>
 
           {draft.mode === "tournament" ? (
             <>

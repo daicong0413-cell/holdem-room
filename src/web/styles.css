@@ -926,13 +926,39 @@ input[type="number"] {
   align-self: flex-start;
 }
 
-/* A sliding on/off switch, used for the auto-start toggle. */
+/* Toggle rows look like every other field: title on top, control below, so the
+   grid stays aligned instead of one cell being a row and the rest columns. */
+.settings-grid .switch-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* Even the nested field stacks, so nothing in the dialog spreads a label away
+   from its control. */
+.switch-field .switch-sub {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.switch-field .switch-note {
+  font-style: normal;
+  font-size: 12px;
+  color: #6b7684;
+  line-height: 1.5;
+}
+
+/* A sliding on/off switch. */
 .switch {
   display: inline-flex;
   flex-direction: row;
   align-items: center;
-  gap: 10px;
+  gap: 9px;
   cursor: pointer;
+  width: fit-content;
 }
 
 .switch input {
@@ -940,6 +966,11 @@ input[type="number"] {
   opacity: 0;
   width: 0;
   height: 0;
+}
+
+.switch-state {
+  font-size: 12.5px;
+  color: var(--text);
 }
 
 .switch .track {
@@ -1000,7 +1031,7 @@ input[type="number"] {
   background: rgb(248 81 73 / 0.14);
 }
 
-/* Checkbox rows in the settings dialog read as one line, not a label above a box. */
+/* Checkbox rows outside the settings grid stay on one line. */
 label.check {
   flex-direction: row;
   align-items: center;
