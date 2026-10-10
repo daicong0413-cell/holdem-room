@@ -8,6 +8,7 @@ import {
   type TableState,
   applyAction,
   buildPots,
+  collectedPot,
   createTable,
   isLegalAction,
   legalActions,
@@ -80,6 +81,31 @@ test("the big blind keeps the option to raise after everyone limps", () => {
   assert.equal(table.hand!.street, "flop");
   assert.equal(table.hand!.toActIndex, 1, "the small blind acts first postflop");
   assert.equal(totalPot(table), 6);
+});
+
+test("the displayed pot holds only collected chips, not live bets", () => {
+  const table = createTable({ seats: 2, smallBlind: 1, bigBlind: 2 });
+  seatPlayer(table, 0, { playerId: "sb", name: "SB", stack: 200 });
+  seatPlayer(table, 1, { playerId: "bb", name: "BB", stack: 200 });
+  startHand(table, seededRng(3));
+
+  // Preflop: the blinds are live bets in front of their players, so the pot
+  // itself is still empty.
+  assert.equal(totalPot(table), 3, "both blinds are on the table");
+  assert.equal(collectedPot(table), 0, "but none of it has been collected yet");
+
+  applyAction(table, { type: "call" });
+  applyAction(table, { type: "check" });
+
+  // The street closed: exactly the previous street's bets roll into the pot.
+  assert.equal(table.hand!.street, "flop");
+  assert.equal(collectedPot(table), 4, "the preflop money is now the pot");
+  assert.equal(totalPot(table), 4);
+
+  // A flop bet is live, so the pot does not move until the street closes.
+  applyAction(table, { type: "raise", to: 4 });
+  assert.equal(totalPot(table), 8, "the bet is on the table");
+  assert.equal(collectedPot(table), 4, "the pot is unchanged while the bet is live");
 });
 
 test("a raise below the minimum is rejected", () => {

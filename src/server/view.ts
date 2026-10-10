@@ -8,7 +8,14 @@
 
 import { cardToString } from "../engine/cards.ts";
 import { categoryOf, tiebreakersOf } from "../engine/hand.ts";
-import { type HandResult, type Street, type TableState, legalActions, totalPot } from "../engine/table.ts";
+import {
+  type HandResult,
+  type Street,
+  type TableState,
+  collectedPot,
+  legalActions,
+  totalPot,
+} from "../engine/table.ts";
 import { displayCard, handNameZh } from "../shared/format.ts";
 import type {
   HandHistoryEntry,
@@ -92,7 +99,7 @@ export function buildTableView(table: TableState, options: ViewOptions): TableVi
     handId: hand?.handId ?? 0,
     street: hand?.street ?? "complete",
     board: hand?.board.map(cardToString) ?? [],
-    pot: totalPot(table),
+    pot: collectedPot(table),
     buttonIndex: table.buttonIndex,
     smallBlind: table.smallBlind,
     bigBlind: table.bigBlind,

@@ -220,6 +220,20 @@ export function totalPot(table: TableState): number {
   return table.seats.reduce((sum, seat) => sum + seat.committed, 0);
 }
 
+/**
+ * What the pot is *displayed* as: chips already collected, i.e. everything bet
+ * on previous streets.
+ *
+ * Bets still live this street are drawn in front of their own player, so
+ * counting them in the pot as well would show the same chips twice — and it
+ * would make the half/full-pot presets size off money the bettor has already
+ * put in. When the street closes, `streetCommitted` rolls into `committed` and
+ * the pot grows by exactly that amount.
+ */
+export function collectedPot(table: TableState): number {
+  return totalPot(table) - table.seats.reduce((sum, seat) => sum + seat.streetCommitted, 0);
+}
+
 export function potIfFolded(table: TableState): number {
   return totalPot(table);
 }
