@@ -115,8 +115,8 @@ const rooms = new Map<string, Room>();
 
 /**
  * The language-model layer is optional by design. Without a key the bots still
- * play a full, personality-driven game — they just never ask for a second
- * opinion. Nothing else in the server changes.
+ * play a full, personality-driven local game. With a key, the model chooses
+ * every bot action, with a local fallback if the request fails.
  */
 function createAdvisorFromEnv(): DeepSeekAdvisor | null {
   const apiKey = process.env.DEEPSEEK_API_KEY?.trim();
@@ -211,21 +211,23 @@ function createRoom(requestedCode?: string): Room {
   let code = requestedCode?.toUpperCase() ?? "";
   if (code.length === 0 || rooms.has(code)) code = createRoomCode();
 
-  // One brain per persona per room, so the per-hand model-call budget is shared
-  // by all bots of that persona at this table, and table talk reaches the room.
+  // One brain per persona per room; the configured model chooses every action.
   const brains = new Map<string, BotBrain>();
   const room = new Room({
     code,
     settings: { ...DEFAULT_SETTINGS, actionTimeoutMs: ACTION_TIMEOUT_MS, autoStartSeconds: AUTO_START_SECONDS },
     botDelay: () => BOT_THINK_MIN_MS + Math.random() * Math.max(0, BOT_THINK_MAX_MS - BOT_THINK_MIN_MS),
     personas: personaInfos(),
+    onClose: (closedRoom) => {
+      if (rooms.get(code) === closedRoom) rooms.delete(code);
+      console.log(`[room] closed ${code}`);
+    },
     botDecider: (context, personaId) => {
       let brain = brains.get(personaId);
       if (brain === undefined) {
         const persona = findPersona(personaId);
         brain = makeBotDecider(persona, Math.random, {
           getAdvisor: () => advisor,
-          onTalk: (text) => room.broadcastChat(persona.name, text),
         });
         brains.set(personaId, brain);
       }
@@ -496,7 +498,7 @@ wss.on("connection", (socket: WebSocket) => {
     const room = connection.room?.code ?? "-";
     // Logged so a "random disconnect" complaint can be answered with evidence.
     if (connection.member) console.log(`[ws] 断开 ${name}@${room} code=${code}`);
-    if (connection.room && connection.member) connection.room.detach(connection.member.playerId);
+    if (connection.room && connection.member) connection.room.detach(connection.member.playerId, adapter);
   });
 
   socket.on("error", () => {
@@ -515,7 +517,7 @@ function handleMessage(connection: Connection, message: ClientMessage, adapter: 
   }
 
   if (message.t === "hello") {
-    if (connection.member && connection.room) connection.room.detach(connection.member.playerId);
+    if (connection.member && connection.room) connection.room.detach(connection.member.playerId, adapter);
 
     const requested = message.room?.trim().toUpperCase() ?? "";
     let room: Room | null = null;
@@ -544,6 +546,10 @@ function handleMessage(connection: Connection, message: ClientMessage, adapter: 
     send(connection, { t: "error", message: "请先发送 hello 加入房间" });
     return;
   }
+  if (room.isClosed()) {
+    send(connection, { t: "roomClosed" });
+    return;
+  }
 
   switch (message.t) {
     case "sit":
@@ -552,11 +558,19 @@ function handleMessage(connection: Connection, message: ClientMessage, adapter: 
     case "stand":
       room.stand(member);
       break;
+    case "leave":
+      room.leave(member);
+      connection.room = null;
+      connection.member = null;
+      break;
+    case "showCards":
+      room.showCards(member, message.handId);
+      break;
     case "addBot":
-      room.addBot(message.seat, message.persona);
+      room.addBotBy(member.playerId, message.seat, message.persona, message.buyIn);
       break;
     case "removeBot":
-      room.removeBot(message.seat);
+      room.removeBotBy(member.playerId, message.seat);
       break;
     case "action":
       room.act(member.playerId, message.action);
@@ -621,7 +635,7 @@ server.listen(PORT, HOST, () => {
     console.log(`  大模型 未启用（没有 DEEPSEEK_API_KEY）—— 机器人只用本地蒙特卡洛决策`);
   } else {
     const stats = advisor.stats();
-    console.log(`  大模型 已启用：${stats.model}，仅在关键决策点调用`);
+    console.log(`  大模型 已启用：${stats.model}，每次机器人行动都会调用`);
   }
   console.log(
     ACTION_TIMEOUT_MS > 0

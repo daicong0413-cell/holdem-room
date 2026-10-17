@@ -35,7 +35,7 @@ function spot(overrides: Partial<SpotInput> = {}): SpotInput {
   };
 }
 
-test("a routine small decision never reaches the model", () => {
+test("a routine small decision has no strategic flags", () => {
   const verdict = classifySpot(spot());
   assert.equal(verdict.important, false, `should be routine, reasons: ${verdict.reasons.join("；")}`);
   assert.deepEqual(verdict.reasons, []);

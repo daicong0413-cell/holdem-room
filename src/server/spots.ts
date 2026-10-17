@@ -1,14 +1,7 @@
 /**
- * Decides whether a decision is worth spending a language-model call on.
- *
- * This is the whole cost story of the project in one function. A model call is
- * slow (seconds) and costs money, so it must be reserved for spots where the
- * arithmetic genuinely does not settle the question — big commitments, all-ins,
- * rivers in bloated pots, and genuinely marginal prices. Routine checks and
- * clear folds never leave the machine.
- *
- * The classifier is deliberately independent of the model so it can be tested,
- * tuned and reasoned about on its own.
+ * Tags strategic features such as large commitments and marginal pot odds for
+ * the model prompt. These tags do not gate requests: every configured bot
+ * decision, including routine checks and folds, is sent to the model.
  */
 
 import type { LegalActions, Street } from "../engine/table.ts";

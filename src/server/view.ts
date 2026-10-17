@@ -16,7 +16,7 @@ import {
   legalActions,
   totalPot,
 } from "../engine/table.ts";
-import { displayCard, handNameZh } from "../shared/format.ts";
+import { displayCard, handNameZh, handLabelEn } from "../shared/format.ts";
 import type {
   HandHistoryEntry,
   HandHistorySummary,
@@ -28,6 +28,11 @@ import type {
 } from "./protocol.ts";
 
 export interface ViewOptions {
+  readonly leavingAt?: (seatIndex: number) => boolean;
+  readonly pendingBuyInAt?: (seatIndex: number) => number;
+  readonly canShowCards?: boolean;
+  readonly cardsShown?: boolean;
+  readonly paused?: boolean;
   readonly roomCode: string;
   /** Seat index of the viewer, or null for a spectator. */
   readonly viewerSeat: number | null;
@@ -94,6 +99,8 @@ export function buildTableView(table: TableState, options: ViewOptions): TableVi
           ? categoryOf(evaluateBest([...seat.hole, ...hand!.board]))
           : rankOf(seat.hole[0]!) === rankOf(seat.hole[1]!) ? HandCategory.Pair : HandCategory.HighCard
         : null,
+      leaving: options.leavingAt?.(seat.index) ?? false,
+      pendingBuyIn: options.pendingBuyInAt?.(seat.index) ?? 0,
     };
   });
 
@@ -119,6 +126,9 @@ export function buildTableView(table: TableState, options: ViewOptions): TableVi
     isHost: options.isHost ?? false,
     settings: options.settings,
     history: [...(options.history ?? [])],
+    canShowCards: options.canShowCards ?? false,
+    cardsShown: options.cardsShown ?? false,
+    paused: options.paused ?? false,
   };
 }
 
@@ -200,19 +210,20 @@ function buildLog(table: TableState): LogEntryView[] {
   for (const event of hand.events) {
     switch (event.type) {
       case "blinds":
-        log.push({ street: "preflop", text: `${nameOf(event.smallBlind.seat)} posts SB ${event.smallBlind.amount}` });
-        log.push({ street: "preflop", text: `${nameOf(event.bigBlind.seat)} posts BB ${event.bigBlind.amount}` });
+        log.push({ street: "preflop", text: `${nameOf(event.smallBlind.seat)} 小盲 ${event.smallBlind.amount}`, textEn: `${nameOf(event.smallBlind.seat)} posts SB ${event.smallBlind.amount}` });
+        log.push({ street: "preflop", text: `${nameOf(event.bigBlind.seat)} 大盲 ${event.bigBlind.amount}`, textEn: `${nameOf(event.bigBlind.seat)} posts BB ${event.bigBlind.amount}` });
         break;
       case "action":
         log.push({
           street,
-          text: `${nameOf(event.seat)} ${describeAction(event.action, event.previousBet)}`,
+          text: `${nameOf(event.seat)} ${describeActionZh(event.action, event.previousBet)}`,
+          textEn: `${nameOf(event.seat)} ${describeAction(event.action, event.previousBet)}`,
         });
         break;
       case "street":
         street = event.street;
         if (event.board.length > 0) {
-          log.push({ street, text: `牌面 ${event.board.map(showCard).join(" ")}` });
+          log.push({ street, text: `牌面 ${event.board.map(showCard).join(" ")}`, textEn: `Board ${event.board.map(showCard).join(" ")}` });
         }
         break;
       case "showdown":
@@ -223,13 +234,14 @@ function buildLog(table: TableState): LogEntryView[] {
               categoryOf(entry.score),
               tiebreakersOf(entry.score),
             )}）`,
+            textEn: `${nameOf(entry.seatIndex)} shows ${entry.hole.map(showCard).join(" ")} (${handLabelEn(categoryOf(entry.score))})`,
           });
         }
         break;
       case "award":
         for (const award of event.awards) {
           const winners = award.winners.map(nameOf).join("、");
-          log.push({ street: "river", text: `${winners} 赢得 ${award.amount}` });
+          log.push({ street: "river", text: `${winners} 赢得 ${award.amount}`, textEn: `${award.winners.map(nameOf).join(", ")} wins ${award.amount}` });
         }
         break;
       default:
@@ -251,5 +263,15 @@ function describeAction(action: { type: string; to?: number }, previousBet: numb
       return previousBet === 0 ? `Bet ${action.to}` : `Raise to ${action.to}`;
     default:
       return action.type;
+  }
+}
+
+function describeActionZh(action: { type: string; to?: number }, previousBet: number): string {
+  switch (action.type) {
+    case "fold": return "弃牌";
+    case "check": return "过牌";
+    case "call": return "跟注";
+    case "raise": return previousBet === 0 ? `下注 ${action.to}` : `加注到 ${action.to}`;
+    default: return action.type;
   }
 }

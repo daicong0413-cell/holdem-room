@@ -32,7 +32,7 @@ try {
   const [status, catalog] = await Promise.all([getApi("/api/llm"), getApi("/api/personas")]);
   assert.equal(catalog.personas?.length, 5, "expected all five bot personas");
   console.log(`OK: five bots: ${catalog.personas.map((persona) => persona.name).join(", ")}`);
-  console.log(`Model: ${status.enabled ? status.model + " configured (key decisions only)" : "not configured; local strategy bots available"}`);
+  console.log(`Model: ${status.enabled ? status.model + " configured (every bot action)" : "not configured; local strategy bots available"}`);
   assert.equal(status.configurable, false, "public server must run with NODE_ENV=production");
   // An empty object cannot change any setting, even against an older server.
   const update = await get("/api/llm", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
