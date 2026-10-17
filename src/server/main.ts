@@ -19,7 +19,7 @@ import { fileURLToPath } from "node:url";
 
 import { WebSocket, WebSocketServer } from "ws";
 
-import { type Advisor, DEFAULT_BASE_URL, DEFAULT_MODEL, DeepSeekAdvisor } from "./advisor.ts";
+import { type AdvisorStatsView, DEFAULT_BASE_URL, DEFAULT_MODEL, DeepSeekAdvisor, connectionTestRequest } from "./advisor.ts";
 import { type EnvUpdates, updateEnvFile } from "./env-file.ts";
 import { type BotBrain, PERSONAS, findPersona, makeBotDecider, personaInfos } from "./bots.ts";
 import {
@@ -117,7 +117,7 @@ const rooms = new Map<string, Room>();
  * play a full, personality-driven game — they just never ask for a second
  * opinion. Nothing else in the server changes.
  */
-function createAdvisorFromEnv(): Advisor | null {
+function createAdvisorFromEnv(): DeepSeekAdvisor | null {
   const apiKey = process.env.DEEPSEEK_API_KEY?.trim();
   if (apiKey === undefined || apiKey.length === 0) return null;
 
@@ -144,6 +144,7 @@ function llmStatus(configurable: boolean): {
   model: string;
   baseUrl: string;
   configurable: boolean;
+  stats: AdvisorStatsView | null;
 } {
   // Report the model actually in use, not "unset": the whole point of showing
   // it is to answer "which model are the bots talking to?".
@@ -152,6 +153,7 @@ function llmStatus(configurable: boolean): {
     model: process.env.DEEPSEEK_MODEL?.trim() || DEFAULT_MODEL,
     baseUrl: process.env.DEEPSEEK_BASE_URL?.trim() || DEFAULT_BASE_URL,
     configurable,
+    stats: advisor?.stats() ?? null,
   };
 }
 
@@ -231,7 +233,7 @@ function createRoom(requestedCode?: string): Room {
       if (brain === undefined) {
         const persona = findPersona(personaId);
         brain = makeBotDecider(persona, Math.random, {
-          advisor: advisor ?? undefined,
+          getAdvisor: () => advisor,
           onTalk: (text) => room.broadcastChat(persona.name, text),
         });
         brains.set(personaId, brain);
@@ -354,6 +356,22 @@ const server = createServer((request, response) => {
       })();
       return;
     }
+  }
+
+  if (url.pathname === "/api/llm/test" && request.method === "POST") {
+    if (!isLocalRequest(request)) {
+      sendJson(response, 403, { error: "只有服务器所在机器可以测试大模型连接" });
+      return;
+    }
+    const backend = advisor;
+    if (!backend) {
+      sendJson(response, 400, { error: "请先保存 API 配置" });
+      return;
+    }
+    void backend.review(connectionTestRequest()).then((verdict) => {
+      sendJson(response, 200, { ok: verdict !== null, error: backend.stats().lastError, status: llmStatus(true) });
+    });
+    return;
   }
 
   if (url.pathname === "/api/config") {

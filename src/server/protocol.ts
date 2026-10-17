@@ -26,6 +26,8 @@ export interface SeatView {
   readonly hole: string[] | null;
   readonly holeCount: number;
   readonly lastAction: string | null;
+  /** Only sent for the viewer's own seat; never reveals an opponent's strength. */
+  readonly handCategory: number | null;
 }
 
 export interface AwardView {

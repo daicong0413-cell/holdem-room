@@ -11,7 +11,8 @@ import {
 } from "react";
 
 import { allInIsDistinct, potBetAmount } from "./betting.ts";
-import { displayCard, displayRank, handNameZh, isRedSuit, money, streetLabelZh, SUIT_SYMBOLS } from "../shared/format.ts";
+import { displayCard, displayRank, handLabelEn, handNameZh, isRedSuit, money, streetLabelZh, SUIT_SYMBOLS } from "../shared/format.ts";
+import type { AdvisorStatsView } from "../server/advisor.ts";
 import type {
   ClientMessage,
   GameMode,
@@ -39,6 +40,49 @@ interface LlmStatus {
   baseUrl: string;
   /** True only when this browser is on the machine running the server. */
   configurable: boolean;
+  stats?: AdvisorStatsView | null;
+}
+
+function LlmActivity({ status, onUpdate }: { status: LlmStatus; onUpdate: (next: LlmStatus) => void }): ReactElement | null {
+  const [testing, setTesting] = useState(false);
+  const [testError, setTestError] = useState<string | null>(null);
+  if (!status.enabled) return null;
+  const stats = status.stats;
+  const calls = stats?.calls ?? 0;
+  const failures = stats?.failures ?? 0;
+  const successes = stats?.successes ?? 0;
+  const pending = Math.max(0, calls - failures - successes);
+
+  const test = async (): Promise<void> => {
+    setTesting(true);
+    setTestError(null);
+    try {
+      const response = await fetch("/api/llm/test", { method: "POST", headers: { "content-type": "application/json" } });
+      const payload = await response.json() as { ok?: boolean; error?: string; status?: LlmStatus };
+      if (payload.status) onUpdate(payload.status);
+      if (!response.ok || (!payload.ok && !payload.status)) setTestError(payload.error ?? "连接测试失败");
+    } catch {
+      setTestError("无法连接游戏服务");
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  return (
+    <div className="llm-activity">
+      <div className="llm-activity-head">
+        <strong>API 调用</strong>
+        <span>{calls === 0 ? "等待关键决策" : pending > 0 ? `${pending} 次请求中` : stats?.lastError ? "最近调用失败" : "已成功调用"}</span>
+      </div>
+      <div className="llm-counts"><span>总计 {calls}</span><span>成功 {successes}</span><span>失败 {failures}</span></div>
+      <div className="llm-tokens" title="接口返回的累计 token；重启服务或更换配置后清零。包含格式不合法但接口已返回的响应。">
+        Token · 输入 {(stats?.promptTokens ?? 0).toLocaleString("en-US")} / 输出 {(stats?.completionTokens ?? 0).toLocaleString("en-US")}
+      </div>
+      {testError || stats?.lastError ? <p className="llm-diagnostic" role="status">{testError ?? stats?.lastError}</p> : null}
+      {status.configurable ? <button type="button" className="ghost llm-test" onClick={() => void test()} disabled={testing}
+        title="测试当前已保存的配置，会产生一次请求和少量 token 用量。">{testing ? "正在测试…" : "测试连接"}</button> : null}
+    </div>
+  );
 }
 
 interface SettingsBounds {
@@ -531,13 +575,15 @@ function Seat({
         <div className="seat-plate">
           <span className="seat-row">
             <span className="seat-name">{seat.name}</span>
-            {seat.isYou ? <span className="you-label">你</span> : null}
+            {seat.isYou && seat.handCategory != null ? (
+              <span className="seat-hand" title="Your best hand with the current board">{handLabelEn(seat.handCategory)}</span>
+            ) : seat.isYou ? <span className="you-label">You</span> : null}
             <span className="seat-badges">
             {isButton ? <span className="badge dealer" title="庄家按钮">D</span> : null}
             {isSmallBlind ? <span className="badge blind">SB</span> : null}
             {isBigBlind ? <span className="badge blind">BB</span> : null}
-            {seat.allIn ? <span className="badge allin">全下</span> : null}
-            {seat.folded ? <span className="badge folded">弃牌</span> : null}
+            {seat.allIn ? <span className="badge allin">All-in</span> : null}
+            {seat.folded ? <span className="badge folded">Fold</span> : null}
             </span>
           </span>
           {/* Chips live on their own line, under the name. */}
@@ -622,8 +668,8 @@ function ActionBar({
   return (
     <div className="action-cluster">
       <div className="decision-summary">
-        <strong>轮到你行动</strong>
-        <span>{legal.canCheck ? "可以免费过牌" : `跟注 ${money(legal.callCost)} · 跟注后底池 ${money(totalPot + legal.callCost)}`}</span>
+        <strong>Your turn</strong>
+        <span>{legal.canCheck ? "Check is free" : `Call ${money(legal.callCost)} · Pot after call ${money(totalPot + legal.callCost)}`}</span>
         {countdown !== null ? <span className={`decision-clock${countdown <= 10 ? " urgent" : ""}`}>{countdown}s</span> : null}
       </div>
       {legal.canRaise ? (
@@ -658,15 +704,15 @@ function ActionBar({
             />
           </label>
           <div className="raise-presets">
-            <button type="button" onClick={() => { setTyped(null); setTarget(potBet(1 / 3)); }}>⅓ 池</button>
+            <button type="button" onClick={() => { setTyped(null); setTarget(potBet(1 / 3)); }}>⅓ Pot</button>
             <button type="button" onClick={() => { setTyped(null); setTarget(potBet(0.5)); }}>
-              半池
+              ½ Pot
             </button>
             <button type="button" onClick={() => { setTyped(null); setTarget(potBet(1)); }}>
-              底池
+              Pot
             </button>
             <button type="button" onClick={() => { setTyped(null); setTarget(legal.maxRaiseTo); }}>
-              全下
+              All-in
             </button>
           </div>
         </div>
@@ -674,19 +720,19 @@ function ActionBar({
 
       <div className="action-buttons">
         <button type="button" className="danger" onClick={() => onAction({ t: "action", action: { type: "fold" } })}>
-          弃牌
+          Fold
         </button>
 
         {legal.canCheck ? (
           <button type="button" onClick={() => onAction({ t: "action", action: { type: "check" } })}>
-            过牌
+            Check
           </button>
         ) : null}
 
         {legal.canCall ? (
           <button type="button" onClick={() => onAction({ t: "action", action: { type: "call" } })}>
-            跟注 {money(legal.callCost)}
-            {legal.callCost < legal.toCall ? "（全下）" : ""}
+            Call {money(legal.callCost)}
+            {legal.callCost < legal.toCall ? " (All-in)" : ""}
           </button>
         ) : null}
 
@@ -696,7 +742,7 @@ function ActionBar({
             className="primary"
             onClick={() => onAction({ t: "action", action: { type: "raise", to: clamped } })}
           >
-            {legal.toCall > 0 ? `加注到 ${money(clamped)}` : `下注 ${money(clamped)}`}
+            {legal.toCall > 0 ? `Raise to ${money(clamped)}` : `Bet ${money(clamped)}`}
           </button>
         ) : showAllIn ? (
           <button
@@ -704,7 +750,7 @@ function ActionBar({
             className="primary"
             onClick={() => onAction({ t: "action", action: { type: "raise", to: legal.maxRaiseTo } })}
           >
-            全下 {money(legal.maxRaiseTo)}
+            All-in {money(legal.maxRaiseTo)}
           </button>
         ) : null}
 
@@ -1055,6 +1101,7 @@ function TableScreen({
   onSend,
   onLeave,
   onRequestHistory,
+  onLlm,
 }: {
   view: TableView;
   personas: PersonaInfo[];
@@ -1066,6 +1113,7 @@ function TableScreen({
   onSend: (message: ClientMessage) => void;
   onLeave: () => void;
   onRequestHistory: (handId: number) => void;
+  onLlm: (next: LlmStatus) => void;
 }): ReactElement {
   const [copied, setCopied] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -1203,11 +1251,6 @@ function TableScreen({
                 <small>自动入座 · 最多 3 位机器人陪练</small>
               </div>
             ) : <>
-            <div className="street-steps" aria-label={`当前阶段：${streetLabelZh(view.street)}`}>
-              {(["preflop", "flop", "turn", "river"] as const).map((street, index) => (
-                <span key={street} className={view.street === street ? "active" : view.board.length >= index + 2 && index > 0 ? "done" : ""}>{streetLabelZh(street)}</span>
-              ))}
-            </div>
             <div className="center-pot"><span>底池</span><strong>{money(view.pot)}</strong></div>
             <div className="board">
               {view.board.length === 0 ? (
@@ -1306,6 +1349,7 @@ function TableScreen({
 
         {/* Facts that are useful while playing but do not deserve top-bar space. */}
         <div className="sidebar-foot">
+          {llm ? <LlmActivity status={llm} onUpdate={onLlm} /> : null}
           <div className="foot-row">
             <span>大模型</span>
             <strong className={llm?.enabled ? "on" : undefined}>
@@ -1416,7 +1460,11 @@ function TableScreen({
             {view.legal ? (
               <ActionBar view={view} onAction={onSend} countdown={countdown} />
             ) : view.toActIndex !== null && view.street !== "complete" ? (
-              <div className="waiting-turn" role="status"><span className="thinking-dots" aria-hidden="true"><i /><i /><i /></span><div><strong>{view.seats[view.toActIndex]?.name ?? "对手"} 正在{view.seats[view.toActIndex]?.isBot ? "思考" : "行动"}</strong><span>{view.seats[view.toActIndex]?.isBot ? "稍等片刻，好牌值得想一想。" : countdown !== null ? `剩余 ${countdown} 秒` : "等待对手决定。"}</span></div></div>
+              <div className="waiting-turn" role="status">
+                <span className="thinking-dots" aria-hidden="true"><i /><i /><i /></span>
+                <div><strong>{view.seats[view.toActIndex]?.name ?? "Opponent"} is {view.seats[view.toActIndex]?.isBot ? "thinking" : "acting"}…</strong>
+                  <span>{countdown !== null ? `${countdown}s remaining` : "Waiting for the next move."}</span></div>
+              </div>
             ) : (
               view.handId > 0 ? <span className="hint">{streetLabelZh(view.street)}</span> : null
             )}
@@ -1639,7 +1687,7 @@ function Lobby({
           <span className={`model-dot${llm?.enabled ? " enabled" : ""}`} />
           <p className="fine-print">
           {llm?.enabled
-            ? `AI 已就绪 · ${llm.model} · 关键决策由大模型参与`
+            ? `AI 已配置 · ${llm.model} · 关键决策由大模型参与`
             : "本地 AI 已就绪 · 不配置大模型也能开始游戏"}
           </p>
         {llm?.configurable ? (
@@ -1648,6 +1696,7 @@ function Lobby({
           </button>
         ) : null}
         </div>
+        {llm ? <LlmActivity status={llm} onUpdate={onLlm} /> : null}
       </div>
 
       {llmOpen && llm ? <LlmDialog status={llm} onClose={() => setLlmOpen(false)} onSaved={onLlm} /> : null}
@@ -1662,6 +1711,20 @@ export function App(): ReactElement {
   const [bounds, setBounds] = useState<SettingsBounds>(FALLBACK_BOUNDS);
   const { connect } = game;
   const autoJoined = useRef(false);
+
+  useEffect(() => {
+    let active = true;
+    const controller = new AbortController();
+    const refresh = (): void => {
+      void fetch("/api/llm", { signal: controller.signal })
+        .then((response) => response.ok ? response.json() : null)
+        .then((next: LlmStatus | null) => { if (active && next) setLlm(next); })
+        .catch(() => undefined);
+    };
+    refresh();
+    const timer = window.setInterval(refresh, 5000);
+    return () => { active = false; controller.abort(); window.clearInterval(timer); };
+  }, []);
 
   useEffect(() => {
     if (autoJoined.current) return;
@@ -1724,6 +1787,7 @@ export function App(): ReactElement {
           onSend={game.send}
           onLeave={game.disconnect}
           onRequestHistory={game.requestHistory}
+          onLlm={setLlm}
         />
       ) : (
         <Lobby personas={personas} llm={llm} onLlm={setLlm} onJoin={game.connect} status={game.status} />

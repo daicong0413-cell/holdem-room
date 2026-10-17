@@ -96,6 +96,8 @@ export function findPersona(id: string): PersonaConfig {
 export interface BotDeciderOptions {
   /** When present, key decisions are put to the language model. */
   readonly advisor?: Advisor | undefined;
+  /** Resolves the current backend after an operator changes live configuration. */
+  readonly getAdvisor?: () => Advisor | null;
   /** Called with the model's table talk, if any. */
   readonly onTalk?: ((text: string) => void) | undefined;
   /** Hard cap per hand per seat; the main cost guard. */
@@ -131,8 +133,8 @@ export function makeBotDecider(
     const required = context.potOdds * config.callThreshold * (1.15 - config.aggression * 0.3);
     const local = chooseLocally(context, config, strength, required, rng);
 
-    const advisor = options.advisor;
-    if (advisor === undefined) return local;
+    const advisor = options.getAdvisor ? options.getAdvisor() : options.advisor;
+    if (advisor == null) return local;
 
     const spot = classifySpot({
       street: context.street,

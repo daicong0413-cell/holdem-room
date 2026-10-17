@@ -245,6 +245,16 @@ test("a transport that throws is contained and reported without the key", async 
   assert.equal(JSON.stringify(advisor.stats()).includes("sk-secret-value"), false);
 });
 
+test("network permission failures are diagnosed without exposing transport messages", async () => {
+  const advisor = new DeepSeekAdvisor({ apiKey: "sk-secret-value" }, async () => {
+    throw new Error("request containing sk-secret-value", { cause: { code: "EACCES" } });
+  });
+  assert.equal(await advisor.review(request()), null);
+  assert.equal(advisor.stats().lastError, "运行环境禁止网络访问（EACCES）");
+  assert.equal(advisor.stats().successes, 0);
+  assert.ok(!JSON.stringify(advisor.stats()).includes("sk-secret-value"));
+});
+
 test("a slow model is aborted by the timeout instead of stalling the table", async () => {
   let aborted = false;
   const transport: ChatTransport = (_chatRequest, signal) =>
@@ -290,6 +300,7 @@ function stubAdvisor(choiceId: string | null, talk: string | null = null): { adv
         model: "stub",
         calls,
         failures: 0,
+        successes: calls,
         promptTokens: calls,
         completionTokens: calls,
         lastError: null,
@@ -333,6 +344,35 @@ test("a routine spot never reaches the model", async () => {
   const action = (await brain(ctx)) as PlayerAction;
   assert.equal(calls(), 0, "a trivial decision must not cost a token");
   assert.ok(action.type === "check" || action.type === "raise");
+});
+
+test("an existing bot uses a newly configured advisor and stops using a disabled one", async () => {
+  const first = stubAdvisor("fold");
+  const replacement = stubAdvisor("call");
+  let current: Advisor | null = null;
+  const brain = makeBotDecider(GTO, seededRng(2), { getAdvisor: () => current });
+  const ctx = context({
+    street: "river", pot: 150, toCall: 200, stack: 200,
+    legal: legal({ canCheck: false, canCall: true, toCall: 200, callCost: 200, canRaise: false }),
+  });
+  await brain(ctx);
+  current = first.advisor;
+  await brain({ ...ctx, handId: 2 });
+  assert.equal(first.calls(), 1, "enabling a model must reach bots created before configuration");
+  current = replacement.advisor;
+  await brain({ ...ctx, handId: 3 });
+  assert.equal(replacement.calls(), 1, "switching the provider must replace the cached backend");
+  current = null;
+  await brain({ ...ctx, handId: 4 });
+  assert.equal(replacement.calls(), 1, "turning the model off must stop further requests");
+});
+
+test("token usage is counted even when a paid model response contains an invalid choice", async () => {
+  const { transport } = fakeTransport(completion('{"choice":"not-a-candidate"}', 33, 7));
+  const advisor = new DeepSeekAdvisor({ apiKey: "sk-test" }, transport);
+  assert.equal(await advisor.review(request()), null);
+  assert.equal(advisor.stats().promptTokens, 33);
+  assert.equal(advisor.stats().completionTokens, 7);
 });
 
 test("a failing advisor leaves the local decision untouched", async () => {

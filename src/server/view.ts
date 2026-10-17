@@ -6,8 +6,8 @@
  * so the server never serialises `TableState` directly.
  */
 
-import { cardToString } from "../engine/cards.ts";
-import { categoryOf, tiebreakersOf } from "../engine/hand.ts";
+import { cardToString, rankOf } from "../engine/cards.ts";
+import { categoryOf, evaluateBest, HandCategory, tiebreakersOf } from "../engine/hand.ts";
 import {
   type HandResult,
   type Street,
@@ -89,6 +89,11 @@ export function buildTableView(table: TableState, options: ViewOptions): TableVi
       hole,
       holeCount: seat.hole.length,
       lastAction: lastActions.get(seat.index) ?? null,
+      handCategory: isYou && seat.hole.length === 2
+        ? (hand?.board.length ?? 0) >= 3
+          ? categoryOf(evaluateBest([...seat.hole, ...hand!.board]))
+          : rankOf(seat.hole[0]!) === rankOf(seat.hole[1]!) ? HandCategory.Pair : HandCategory.HighCard
+        : null,
     };
   });
 
@@ -195,8 +200,8 @@ function buildLog(table: TableState): LogEntryView[] {
   for (const event of hand.events) {
     switch (event.type) {
       case "blinds":
-        log.push({ street: "preflop", text: `${nameOf(event.smallBlind.seat)} 下小盲 ${event.smallBlind.amount}` });
-        log.push({ street: "preflop", text: `${nameOf(event.bigBlind.seat)} 下大盲 ${event.bigBlind.amount}` });
+        log.push({ street: "preflop", text: `${nameOf(event.smallBlind.seat)} posts SB ${event.smallBlind.amount}` });
+        log.push({ street: "preflop", text: `${nameOf(event.bigBlind.seat)} posts BB ${event.bigBlind.amount}` });
         break;
       case "action":
         log.push({
@@ -237,13 +242,13 @@ function buildLog(table: TableState): LogEntryView[] {
 function describeAction(action: { type: string; to?: number }, previousBet: number): string {
   switch (action.type) {
     case "fold":
-      return "弃牌";
+      return "Fold";
     case "check":
-      return "过牌";
+      return "Check";
     case "call":
-      return "跟注";
+      return "Call";
     case "raise":
-      return previousBet === 0 ? `下注 ${action.to}` : `加注到 ${action.to}`;
+      return previousBet === 0 ? `Bet ${action.to}` : `Raise to ${action.to}`;
     default:
       return action.type;
   }

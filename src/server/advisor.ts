@@ -59,6 +59,7 @@ export interface AdvisorStatsView {
   readonly model: string;
   readonly calls: number;
   readonly failures: number;
+  readonly successes: number;
   readonly promptTokens: number;
   readonly completionTokens: number;
   readonly lastError: string | null;
@@ -124,7 +125,7 @@ export const fetchTransport: ChatTransport = async (request, signal) => {
 export class DeepSeekAdvisor implements Advisor {
   private readonly config: ResolvedConfig;
   private readonly transport: ChatTransport;
-  private counters = { calls: 0, failures: 0, promptTokens: 0, completionTokens: 0 };
+  private counters = { calls: 0, failures: 0, successes: 0, promptTokens: 0, completionTokens: 0 };
   private lastError: string | null = null;
 
   constructor(config: DeepSeekConfig, transport: ChatTransport = fetchTransport) {
@@ -145,6 +146,7 @@ export class DeepSeekAdvisor implements Advisor {
       model: this.config.model,
       calls: this.counters.calls,
       failures: this.counters.failures,
+      successes: this.counters.successes,
       promptTokens: this.counters.promptTokens,
       completionTokens: this.counters.completionTokens,
       lastError: this.lastError,
@@ -180,6 +182,11 @@ export class DeepSeekAdvisor implements Advisor {
         controller.signal,
       );
 
+      // The provider can bill a response even when its action fails validation.
+      const usage = extractUsage(response.json);
+      this.counters.promptTokens += usage.promptTokens;
+      this.counters.completionTokens += usage.completionTokens;
+
       if (!response.ok) {
         this.counters.failures++;
         this.lastError = `HTTP ${response.status}`;
@@ -203,9 +210,6 @@ export class DeepSeekAdvisor implements Advisor {
         return null;
       }
 
-      const usage = extractUsage(response.json);
-      this.counters.promptTokens += usage.promptTokens;
-      this.counters.completionTokens += usage.completionTokens;
       this.lastError = null;
 
       const chosen = request.candidates.find((candidate) => candidate.id === parsed.choiceId);
@@ -213,6 +217,7 @@ export class DeepSeekAdvisor implements Advisor {
         this.counters.failures++;
         return null;
       }
+      this.counters.successes++;
 
       return {
         choiceId: chosen.id,
@@ -225,12 +230,43 @@ export class DeepSeekAdvisor implements Advisor {
     } catch (error) {
       this.counters.failures++;
       // Deliberately narrow: a network error message must never carry the key.
-      this.lastError = error instanceof Error && error.name === "AbortError" ? "请求超时" : "请求失败";
+      this.lastError = describeTransportError(error);
       return null;
     } finally {
       clearTimeout(timer);
     }
   }
+}
+
+/** Reports only known error codes; transport messages can contain credentials. */
+export function describeTransportError(error: unknown): string {
+  if (error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError")) return "请求超时";
+  if (typeof error !== "object" || error === null) return "请求失败";
+  const record = error as { code?: unknown; cause?: { code?: unknown } };
+  const code = record.cause?.code ?? record.code;
+  switch (code) {
+    case "EACCES": case "EPERM": return `运行环境禁止网络访问（${code}）`;
+    case "ENOTFOUND": case "EAI_AGAIN": return `域名解析失败（${code}）`;
+    case "ECONNREFUSED": return "连接被拒绝（ECONNREFUSED）";
+    case "ETIMEDOUT": case "UND_ERR_CONNECT_TIMEOUT": return "网络连接超时";
+    case "ECONNRESET": return "网络连接中断（ECONNRESET）";
+    case "CERT_HAS_EXPIRED": case "UNABLE_TO_VERIFY_LEAF_SIGNATURE": return "接口证书验证失败";
+    default: return "请求失败";
+  }
+}
+
+/** A synthetic one-choice probe, independent of any room or player's cards. */
+export function connectionTestRequest(): AdvisorRequest {
+  return {
+    persona: { id: "connection-test", name: "连接测试", description: "这是接口测试，请选择 check。", aggression: 0, tightness: 0, bluff: 0 },
+    context: {
+      seatIndex: 0, handId: 0, hole: [], board: [], street: "preflop", stack: 0,
+      committed: 0, pot: 0, toCall: 0, potOdds: 0, bigBlind: 2, opponents: [], history: [],
+      legal: { seatIndex: 0, toCall: 0, callCost: 0, canFold: true, canCheck: true, canCall: false, canRaise: false, canAllIn: false, minRaiseTo: 0, maxRaiseTo: 0 },
+    },
+    candidates: [{ id: "check", label: "Check", action: { type: "check" } }],
+    equity: 0, requiredEquity: 0, reasons: ["测试接口连接，无实际对局数据"],
+  };
 }
 
 export function buildSystemPrompt(persona: AdvisorPersona): string {

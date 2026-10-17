@@ -53,6 +53,14 @@ const HAND_CATEGORY = {
   straightFlush: 8,
 } as const;
 
+const HAND_LABELS_EN = [
+  "High card", "Pair", "Two pair", "Triple", "Straight", "Flush", "Full house", "Four of a kind", "Straight flush",
+] as const;
+
+export function handLabelEn(category: number): string {
+  return HAND_LABELS_EN[category] ?? "";
+}
+
 /**
  * Names a hand in Chinese from the engine's category + tiebreaker ranks, which
  * keeps the engine itself language-neutral.

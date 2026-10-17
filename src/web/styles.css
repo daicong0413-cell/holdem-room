@@ -833,7 +833,7 @@ button:focus-visible {
   flex-direction: column;
   align-items: flex-end;
   gap: 8px;
-  width: 100%;
+  width: min(100%, 620px);
 }
 
 .raise-row {
@@ -2028,33 +2028,6 @@ label.check input {
   margin-top: 10px;
   color: #a2c0b2;
 }
-.street-steps {
-  display: flex;
-  gap: 15px;
-  margin-bottom: 0;
-  font-size: 10px;
-  color: #b4c8bc;
-}
-.street-steps span::before {
-  content: "";
-  display: inline-block;
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: #8dafa05c;
-  margin-right: 5px;
-  vertical-align: middle;
-}
-.street-steps .active {
-  color: #ffe3a8;
-}
-.street-steps .active::before {
-  background: var(--gold);
-  box-shadow: 0 0 7px #e8c48188;
-}
-.street-steps .done::before {
-  background: #b0cfc0;
-}
 .board-placeholder {
   display: grid;
   place-items: center;
@@ -2133,10 +2106,71 @@ label.check input {
   gap: 8px;
 }
 .action-buttons button {
-  flex: 1;
-  min-height: 40px;
+  flex: 0 1 auto;
+  min-width: 100px;
+  min-height: clamp(40px, calc(40px * var(--ui-scale, 1)), 48px);
+  padding: 9px 18px;
   white-space: nowrap;
-  font-size: 13px;
+  font-size: clamp(13px, calc(13px * var(--ui-scale, 1)), 15px);
+}
+.action-buttons .primary {
+  min-width: 142px;
+}
+.seat-hand {
+  color: #b6e6cd;
+  background: #224a3c;
+  border: 1px solid #5c997e;
+  border-radius: 5px;
+  font-size: 10.5px;
+  font-weight: 500;
+  line-height: 1.5;
+  padding: 1px 6px;
+}
+.llm-activity {
+  font-size: 11px;
+  width: 100%;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+.llm-activity-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.llm-activity-head strong {
+  font-weight: 600;
+  color: var(--text);
+}
+.llm-activity-head > span {
+  color: var(--gold);
+}
+.llm-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  color: var(--muted);
+  margin-top: 8px;
+  font-variant-numeric: tabular-nums;
+}
+.llm-tokens {
+  color: #c2d0c9;
+  font-variant-numeric: tabular-nums;
+  margin-top: 4px;
+}
+.llm-diagnostic {
+  margin: 7px 0;
+  color: #efba8c;
+  overflow-wrap: anywhere;
+}
+.llm-test {
+  font-size: 11px;
+  padding: 4px 9px;
+  margin-top: 8px;
+}
+.persona-gallery > .llm-activity {
+  max-width: 430px;
+  border-bottom: 0;
 }
 .raise-presets {
   gap: 4px;
@@ -2338,6 +2372,11 @@ label.check input {
   .dock-actions {
     grid-row: 1;
     min-height: 0;
+  }
+  .action-buttons button, .action-buttons .primary {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 9px 12px;
   }
   .mobile-hand {
     display: flex;

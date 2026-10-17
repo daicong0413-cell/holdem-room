@@ -31,9 +31,15 @@ function auditLiveView(current: TableView): void {
   if (current.street === "complete") return;
   midHandChecks++;
   for (const seat of current.seats) {
-    if (seat.isYou || seat.hole === null) continue;
-    midHandLeaks++;
-    log(`  ✗ 泄露：${seat.name} 的底牌 ${seat.hole.join(" ")} 在牌局进行中被下发`);
+    if (seat.isYou) continue;
+    if (seat.hole !== null) {
+      midHandLeaks++;
+      log(`  ✗ 泄露：${seat.name} 的底牌 ${seat.hole.join(" ")} 在牌局进行中被下发`);
+    }
+    if (seat.handCategory != null) {
+      midHandLeaks++;
+      log(`  ✗ 泄露：${seat.name} 的私有牌型在牌局进行中被下发`);
+    }
   }
 }
 
