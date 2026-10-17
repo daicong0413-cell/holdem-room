@@ -2,6 +2,8 @@
 
 这是一个 React 前端 + Node.js HTTP/WebSocket 服务。发布包包含完整源码、锁定依赖、已构建的 `dist/web` 和部署模板，**不包含原作者的 API 密钥、node_modules 或浏览器数据**。
 
+**从 GitHub 克隆源码时**，仓库不包含 `dist/web`。Docker 会自动构建网页，直接按下方 Compose 步骤启动；原生 Node 部署则先执行 `npm ci --include=dev` 和 `npm run build:web`，再启动游戏服务。
+
 目标：朋友访问 `https://poker.example.com`，输入昵称，创建房间并分享邀请链接。请将示例域名替换为你的实际子域名。应用部署在子域名根路径 `/`，不支持直接挂到 `/poker/` 这样的子目录。
 
 **不能只上传 `dist/web` 作为静态站点。** 那样只有界面，没有管理房间和发牌的游戏服务；`/api/*` 和 `/ws` 会返回 404，无法创建游戏。必须启动下方的 Node 服务或 Docker 容器，并反向代理到它。已有静态站点的修复见 [DEPLOY-FIX.md](DEPLOY-FIX.md)。
@@ -38,7 +40,7 @@ curl --fail http://127.0.0.1:8787/healthz
 
 如果 8787 已占用，修改 `.env` 的 `HTTP_PORT`，并同步修改反向代理目标端口。Docker 内部的端口仍为 8787。
 
-此 Dockerfile 使用包内预构建网页，只安装生产依赖。服务器无需安装 Node、Python 或前端构建工具，但首次构建需要下载 Node 镜像和 npm 依赖。如果 Docker Hub 不可达，使用服务器已有的镜像源，或改用下方的原生 Node 方案。
+Docker 在构建阶段自动安装构建依赖并生成网页，运行阶段只保留生产依赖、服务源码和构建结果。服务器无需单独安装 Node、Python 或前端构建工具，但首次构建需要下载 Node 镜像和 npm 依赖。如果 Docker Hub 不可达，使用服务器已有的镜像源，或改用下方的原生 Node 方案。
 
 常用命令：
 

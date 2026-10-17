@@ -26,3 +26,9 @@ miniprogram/
 releases/
 .env.*
 !.env.example
+
+# Local signing/TLS credentials
+*.pem
+*.key
+*.p12
+*.pfx

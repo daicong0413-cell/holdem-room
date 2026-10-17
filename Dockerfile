@@ -1,5 +1,12 @@
-# The release ZIP includes dist/web. Rebuild it with npm run build:web after
-# changing frontend source, before rebuilding this runtime image.
+FROM node:24-bookworm-slim AS web-build
+
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --include=dev --no-audit --no-fund
+COPY src ./src
+COPY tsconfig.json vite.config.ts ./
+RUN npm run build:web
+
 FROM node:24-bookworm-slim
 
 ENV NODE_ENV=production HOST=0.0.0.0 PORT=8787
@@ -8,7 +15,8 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
 COPY --chown=node:node src ./src
 COPY --chown=node:node scripts/check-deployment.mjs ./scripts/check-deployment.mjs
-COPY --chown=node:node dist/web ./dist/web
+COPY --from=web-build --chown=node:node /app/dist/web ./dist/web
+COPY LICENSE ./LICENSE
 
 USER node
 EXPOSE 8787
