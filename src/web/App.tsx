@@ -11,6 +11,7 @@ import {
 } from "react";
 
 import { allInIsDistinct, potBetAmount } from "./betting.ts";
+import { readBackendJson } from "./backend.ts";
 import { displayCard, displayRank, handLabelEn, handNameZh, isRedSuit, money, streetLabelZh, SUIT_SYMBOLS } from "../shared/format.ts";
 import type { AdvisorStatsView } from "../server/advisor.ts";
 import type {
@@ -255,6 +256,7 @@ function useGame(): {
   status: Status;
   view: TableView | null;
   notice: string | null;
+  connectionError: string | null;
   chat: ChatLine[];
   historyEntry: HandHistoryEntry | null;
   send: (message: ClientMessage) => void;
@@ -267,6 +269,7 @@ function useGame(): {
   const [status, setStatus] = useState<Status>("idle");
   const [view, setView] = useState<TableView | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
 
   // Notices used to stay up until dismissed by hand. A few seconds is enough to
   // read one, and a new notice replaces it.
@@ -279,7 +282,7 @@ function useGame(): {
   const [historyEntry, setHistoryEntry] = useState<HandHistoryEntry | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
   /** Non-null while we intend to be connected; drives automatic reconnection. */
-  const retry = useRef<{ room: string; name: string; attempt: number; timer: number | null } | null>(null);
+  const retry = useRef<{ room: string; name: string; attempt: number; timer: number | null; hasConnected: boolean } | null>(null);
   const openRef = useRef<(room: string, name: string) => void>(() => undefined);
 
   const send = useCallback((message: ClientMessage) => {
@@ -291,6 +294,9 @@ function useGame(): {
     const scheme = window.location.protocol === "https:" ? "wss" : "ws";
     const socket = new WebSocket(`${scheme}://${window.location.host}/ws`);
     socketRef.current = socket;
+    const connectTimeout = window.setTimeout(() => {
+      if (socketRef.current === socket) socket.close();
+    }, 8000);
 
     socket.onopen = () => {
       if (socketRef.current !== socket) return;
@@ -308,11 +314,14 @@ function useGame(): {
       }
       switch (message.t) {
         case "welcome":
+          window.clearTimeout(connectTimeout);
+          setConnectionError(null);
           localStorage.setItem(TOKEN_KEY, message.token);
           if (retry.current) {
             retry.current.room = message.roomCode;
             retry.current.name = message.name;
             retry.current.attempt = 0;
+            retry.current.hasConnected = true;
           }
           setStatus("open");
           window.history.replaceState(null, "", `?room=${message.roomCode}`);
@@ -335,11 +344,18 @@ function useGame(): {
     };
 
     socket.onclose = () => {
+      window.clearTimeout(connectTimeout);
       if (socketRef.current !== socket) return;
       socketRef.current = null;
       const state = retry.current;
       if (state === null) {
         setStatus("idle");
+        return;
+      }
+      if (!state.hasConnected && state.attempt >= 2) {
+        retry.current = null;
+        setStatus("idle");
+        setConnectionError("无法连接牌桌，请重试或联系网站管理员检查游戏服务连接。");
         return;
       }
       // Reconnect on our own: a dropped socket used to leave the page frozen on
@@ -363,7 +379,8 @@ function useGame(): {
     const previousSocket = socketRef.current;
     socketRef.current = null;
     previousSocket?.close();
-    retry.current = { room, name, attempt: 0, timer: null };
+    retry.current = { room, name, attempt: 0, timer: null, hasConnected: false };
+    setConnectionError(null);
     setStatus("connecting");
     setView(null);
     setChat([]);
@@ -378,6 +395,7 @@ function useGame(): {
     socketRef.current?.close();
     socketRef.current = null;
     setStatus("idle");
+    setConnectionError(null);
     setView(null);
   }, []);
 
@@ -394,6 +412,7 @@ function useGame(): {
     status,
     view,
     notice,
+    connectionError,
     chat,
     historyEntry,
     send,
@@ -1596,12 +1615,22 @@ function Lobby({
   onLlm,
   onJoin,
   status,
+  serviceState,
+  serviceError,
+  connectionError,
+  onRetry,
+  onCancel,
 }: {
   personas: PersonaInfo[];
   llm: LlmStatus | null;
   onLlm: (next: LlmStatus) => void;
   onJoin: (room: string, name: string) => void;
   status: Status;
+  serviceState: "loading" | "ready" | "error";
+  serviceError: string | null;
+  connectionError: string | null;
+  onRetry: () => void;
+  onCancel: () => void;
 }): ReactElement {
   const [llmOpen, setLlmOpen] = useState(false);
   const [name, setName] = useState(() => localStorage.getItem(NAME_KEY) ?? "");
@@ -1613,6 +1642,7 @@ function Lobby({
     event.preventDefault();
     const trimmed = name.trim();
     if (trimmed.length === 0) return;
+    if (serviceState !== "ready") return;
     localStorage.setItem(NAME_KEY, trimmed);
     onJoin(mode === "join" ? room.trim().toUpperCase() : "", trimmed);
   };
@@ -1661,9 +1691,20 @@ function Lobby({
           />
         </label> : <p className="create-note">创建后可复制邀请链接，也可以直接和机器人练习。</p>}
 
-        <button className="primary lobby-submit" type="submit" disabled={name.trim().length === 0 || connecting}>
+        {serviceState === "error" ? <div className="service-error" role="alert">
+          <strong>游戏服务未连接</strong>
+          <p>暂时无法创建或加入房间，请稍后重试。</p>
+          <details><summary>给部署者的诊断</summary>
+            <p>请启动 Node 游戏服务，并转发 API 和 WebSocket 请求。</p>
+            <code>{serviceError}</code>
+          </details>
+          <button type="button" className="ghost" onClick={onRetry}>重新检查</button>
+        </div> : serviceState === "loading" ? <p className="fine-print" role="status">正在检查游戏服务…</p> : null}
+        {connectionError ? <p className="llm-error" role="alert">{connectionError}</p> : null}
+        <button className="primary lobby-submit" type="submit" disabled={name.trim().length === 0 || connecting || serviceState !== "ready"}>
           {connecting ? "正在连接…" : mode === "join" ? "加入房间" : "创建房间"}<span aria-hidden="true">↗</span>
         </button>
+        {connecting ? <button className="ghost" type="button" onClick={onCancel}>取消连接</button> : null}
         <span className="lobby-card-foot">现金局 / 锦标赛 · 仅使用虚拟筹码</span>
       </form>
 
@@ -1672,7 +1713,7 @@ function Lobby({
           <div><span className="eyebrow">MEET THE TABLE</span><h2>五种个性，同一张牌桌。</h2></div>
           <span className="gallery-note">你会遇到怎样的对手？</span>
         </div>
-        <ul>
+        {personas.length > 0 ? <ul>
           {personas.map((persona) => (
             <li key={persona.id}>
               <div className={`persona-monogram persona-${persona.id}`} aria-hidden="true">
@@ -1682,13 +1723,16 @@ function Lobby({
               {persona.description ? <span>{persona.description}</span> : null}
             </li>
           ))}
-        </ul>
+        </ul> : <p className="fine-print">连接游戏服务后显示全部对手。</p>}
         <div className="model-status">
           <span className={`model-dot${llm?.enabled ? " enabled" : ""}`} />
           <p className="fine-print">
-          {llm?.enabled
+          {serviceState !== "ready"
+            ? "游戏服务未连接 · AI 状态暂不可用"
+            : llm === null ? "AI 状态暂不可用，正在重新检查…"
+            : llm.enabled
             ? `AI 已配置 · ${llm.model} · 关键决策由大模型参与`
-            : "本地 AI 已就绪 · 不配置大模型也能开始游戏"}
+            : "本地策略机器人 · 管理员配置 API Key 后启用大模型"}
           </p>
         {llm?.configurable ? (
           <button type="button" className="ghost llm-open" onClick={() => setLlmOpen(true)}>
@@ -1709,61 +1753,62 @@ export function App(): ReactElement {
   const [personas, setPersonas] = useState<PersonaInfo[]>([]);
   const [llm, setLlm] = useState<LlmStatus | null>(null);
   const [bounds, setBounds] = useState<SettingsBounds>(FALLBACK_BOUNDS);
+  const [serviceState, setServiceState] = useState<"loading" | "ready" | "error">("loading");
+  const [serviceError, setServiceError] = useState<string | null>(null);
+  const [bootstrapAttempt, setBootstrapAttempt] = useState(0);
   const { connect } = game;
   const autoJoined = useRef(false);
 
   useEffect(() => {
+    if (serviceState !== "ready") return;
     let active = true;
     const controller = new AbortController();
     const refresh = (): void => {
-      void fetch("/api/llm", { signal: controller.signal })
-        .then((response) => response.ok ? response.json() : null)
-        .then((next: LlmStatus | null) => { if (active && next) setLlm(next); })
-        .catch(() => undefined);
+      void readBackendJson<LlmStatus>("/api/llm", controller.signal)
+        .then((next) => { if (active && typeof next.enabled === "boolean") setLlm(next); })
+        .catch(() => { if (active) setLlm(null); });
     };
-    refresh();
     const timer = window.setInterval(refresh, 5000);
     return () => { active = false; controller.abort(); window.clearInterval(timer); };
-  }, []);
+  }, [serviceState]);
 
   useEffect(() => {
-    if (autoJoined.current) return;
+    if (autoJoined.current || serviceState !== "ready") return;
     const room = new URLSearchParams(window.location.search).get("room")?.toUpperCase();
     const savedName = localStorage.getItem(NAME_KEY);
     if (room && room.length > 0 && savedName) {
       autoJoined.current = true;
       connect(room, savedName);
     }
-  }, [connect]);
+  }, [connect, serviceState]);
 
   useEffect(() => {
-    let cancelled = false;
-    void fetch("/api/config")
-      .then((response) => response.json())
-      .then((payload: Partial<ServerConfig>) => {
-        if (!cancelled && payload.bounds) setBounds(payload.bounds);
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    void fetch("/api/personas")
-      .then((response) => response.json())
-      .then((payload: { personas?: PersonaInfo[]; llm?: LlmStatus }) => {
-        if (!cancelled && Array.isArray(payload.personas)) setPersonas(payload.personas);
-        if (!cancelled && payload.llm) setLlm(payload.llm);
-      })
-      .catch(() => {
-        if (!cancelled) setPersonas([{ id: "gto", name: "GTOpro" }]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    let active = true;
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 10_000);
+    setServiceState("loading");
+    setServiceError(null);
+    void Promise.all([
+      readBackendJson<{ personas: PersonaInfo[]; llm: LlmStatus }>("/api/personas", controller.signal),
+      readBackendJson<ServerConfig>("/api/config", controller.signal),
+    ]).then(([payload, config]) => {
+      if (!Array.isArray(payload.personas) || payload.personas.length === 0 || typeof payload.llm?.enabled !== "boolean" || !config.bounds) {
+        throw new Error("游戏服务配置数据不完整，请检查部署版本");
+      }
+      if (!active) return;
+      setPersonas(payload.personas);
+      setLlm(payload.llm);
+      setBounds(config.bounds);
+      setServiceState("ready");
+    }).catch((error: unknown) => {
+      if (!active) return;
+      setPersonas([]);
+      setLlm(null);
+      setServiceState("error");
+      setServiceError(error instanceof Error && error.name !== "AbortError" ? error.message : "游戏服务请求超时或不可达");
+    }).finally(() => window.clearTimeout(timeout));
+    return () => { active = false; controller.abort(); window.clearTimeout(timeout); };
+  }, [bootstrapAttempt]);
 
   return (
     <>
@@ -1790,7 +1835,9 @@ export function App(): ReactElement {
           onLlm={setLlm}
         />
       ) : (
-        <Lobby personas={personas} llm={llm} onLlm={setLlm} onJoin={game.connect} status={game.status} />
+        <Lobby personas={personas} llm={llm} onLlm={setLlm} onJoin={game.connect} status={game.status}
+          serviceState={serviceState} serviceError={serviceError} connectionError={game.connectionError}
+          onRetry={() => setBootstrapAttempt((value) => value + 1)} onCancel={game.disconnect} />
       )}
 
       {game.historyEntry ? <HistoryDialog entry={game.historyEntry} onClose={game.closeHistory} /> : null}

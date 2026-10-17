@@ -1866,6 +1866,27 @@ label.check input {
   text-align: center;
   font-size: 11px;
 }
+.service-error {
+  padding: 14px;
+  border: 1px solid #754c40;
+  border-radius: 10px;
+  background: #291f1c;
+  color: #edc6ae;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.service-error p {
+  margin: 6px 0 10px;
+}
+.service-error details {
+  margin-bottom: 12px;
+}
+.service-error summary {
+  cursor: pointer;
+}
+.service-error code {
+  overflow-wrap: anywhere;
+}
 .persona-gallery {
   grid-column: 1 / -1;
   background: transparent;

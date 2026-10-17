@@ -67,8 +67,8 @@ export const PERSONAS: readonly PersonaConfig[] = [
   },
   {
     id: "tanxuan",
-    name: "Tan Xuan",
-    description: "风格化致敬：大尺度、高压制，敢于在河牌用超池下注代表两极化范围。",
+    name: "Tang Xuan",
+    description: "大尺度、高压制，敢于在河牌用超池下注代表两极化范围。",
     tightness: 0.34,
     aggression: 0.82,
     bluff: 0.6,
@@ -77,8 +77,8 @@ export const PERSONAS: readonly PersonaConfig[] = [
   },
   {
     id: "elton",
-    name: "Elton",
-    description: "风格化致敬：读牌细腻，擅长小额控池与精准的价值下注，很少失控。",
+    name: "Alton",
+    description: "读牌细腻，擅长小额控池与精准的价值下注，很少失控。",
     tightness: 0.55,
     aggression: 0.5,
     bluff: 0.22,
