@@ -2478,3 +2478,98 @@ label.check input {
     scroll-behavior: auto !important;
   }
 }
+
+/* Room tools stay outside the scaled felt so phone inputs and touch targets
+   retain their actual size. */
+.language-switch { display: inline-flex; gap: 3px; padding: 3px; border: 1px solid var(--line); border-radius: 9px; }
+.language-switch button { padding: 4px 9px; border: 0; background: transparent; font-size: 12px; }
+.language-switch button[aria-pressed="true"] { color: var(--gold); background: #314038; }
+.lobby-intro > .language-switch { float: right; }
+.topbar .table-brand { order: -2; }
+.topbar > .language-switch { order: -1; }
+.mobile-stand { display: none; }
+.mobile-contribution { display: none; }
+.seat-options { display: grid; gap: 12px; }
+.seat-options label, .bot-target { display: grid; gap: 6px; font-size: 13px; color: var(--muted); }
+.seat-options input, .seat-options select, .bot-target select { width: 100%; min-width: 0; }
+.seat-options .hint { margin: 0; }
+.room-control-modal { width: min(100%, 440px); }
+.room-control-modal button, .room-control-modal input, .room-control-modal select { min-height: 44px; }
+.bot-management-list { list-style: none; padding: 0; margin: 0 0 20px; display: grid; gap: 10px; }
+.bot-management-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+.bot-management-list li > div { display: flex; flex-direction: column; }
+.bot-management-list span { color: var(--muted); font-size: 12px; }
+.bot-management-list button { font-size: 12px; }
+.bot-target { margin-bottom: 12px; }
+.presence-note { color: var(--gold); margin: 0 0 10px; font-size: 12px; }
+.show-cards { margin-left: auto; min-height: 40px; color: var(--gold); }
+.result-head { flex-wrap: wrap; }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
+
+@media (max-width: 600px) {
+  .room { grid-template-rows: auto 440px auto auto; min-height: 100dvh; }
+  .topbar { gap: 7px; }
+  .topbar button, .language-switch button { min-height: 40px; }
+  .topbar .table-brand { display: none; }
+  .topbar .conn { font-size: 10px; }
+  .topbar .room-chip { margin-right: auto; }
+  .mobile-stand { display: inline-block; }
+  .table-area { padding: 30px 14px 18px; }
+  .action-dock { padding-bottom: max(14px, env(safe-area-inset-bottom)); }
+  .dock-row { gap: 10px; }
+  .action-buttons button { min-height: 46px; }
+  .action-buttons { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .action-buttons button, .action-buttons .primary { padding: 10px 4px; font-size: 12px; white-space: normal; }
+  .raise-presets button { min-height: 40px; }
+  input, select { font-size: 16px; }
+  .chat-form input { min-width: 0; }
+  .compact-chat summary { cursor: pointer; color: var(--muted); font-size: 12px; min-height: 32px; }
+  .compact-chat .chat-lines { height: 5em; }
+  .compact-chat:not([open]) { padding-top: 6px; }
+  .mobile-hand { padding-bottom: 10px; margin-bottom: 10px; }
+  .mobile-hand .seat-hand { color: #b6e6cd; width: fit-content; }
+  .modal-backdrop { padding: 12px; }
+  .modal { max-height: calc(100dvh - 24px); }
+  .history-seats li { flex-wrap: wrap; }
+  .lobby-brand small { display: none; }
+  .lobby-brand { margin-bottom: 24px; }
+  .lobby-intro h1 { clear: both; font-size: 36px; }
+  .sidebar-foot { display: block; }
+  .sidebar { max-height: 420px; overflow: auto; }
+}
+
+.compact-felt { border-radius: 150px; box-shadow: inset 0 0 60px #0005, 0 0 0 7px #253738, 0 0 0 9px #67706a, 0 0 0 12px #101e23; }
+.compact-felt .seat { width: 90px; gap: 3px; }
+.compact-felt .seat-plate { width: 92px; padding: 4px; border-radius: 9px; font-size: 12px; gap: 1px; }
+.compact-felt .seat-row { max-width: 100%; gap: 3px; }
+.compact-felt .seat-name { display: block; overflow: hidden; text-overflow: ellipsis; max-width: 67px; }
+.compact-felt .seat-badges { gap: 2px; }
+.compact-felt .badge { padding: 0 3px; font-size: 8px; }
+.compact-felt .badge.folded, .compact-felt .seat-hand, .compact-felt .stand-btn { display: none; }
+.compact-felt .seat-cards { min-height: 30px; gap: 3px; }
+.compact-felt .seat-cards-row { flex-direction: column; gap: 2px; }
+.compact-felt .card-sm { width: 23px; height: 32px; --rank: 12px; --pip: 18px; border-radius: 4px; }
+.compact-felt .card-lg { width: 35px; height: 49px; --rank: 17px; --pip: 25px; border-radius: 5px; }
+.compact-felt .seat.is-hero { width: 130px; }
+.compact-felt .seat.is-hero .seat-plate { width: 140px; }
+.compact-felt .seat.is-hero .seat-name { max-width: 100px; }
+.compact-felt .seat.is-hero .seat-cards { min-height: 49px; }
+.compact-felt .seat-action { position: static; transform: none; margin: 0; padding: 0 5px; font-size: 10px; max-width: 92px; overflow: hidden; text-overflow: ellipsis; }
+.compact-felt .empty-seat-trigger { min-width: 76px; min-height: 44px; padding: 6px; gap: 2px; border-radius: 10px; font-size: 11px; }
+.compact-felt .empty-seat-plus { font-size: 18px; }
+.compact-felt .board { gap: 4px; min-height: 43px; }
+.compact-felt .board .card-md, .compact-felt .board-placeholder { width: 28px; height: 41px; --rank: 14px; --pip: 22px; border-radius: 5px; }
+.compact-felt .center-pot { gap: 6px; font-size: 11px; }
+.compact-felt .center-pot strong { font-size: 24px; }
+.compact-felt .live-bets { max-width: 160px; text-align: center; line-height: 1.4; font-size: 10px; }
+.compact-felt .table-welcome { width: 170px; }
+.compact-felt .table-welcome h2 { font-size: 18px; }
+.compact-felt .table-welcome p { font-size: 12px; }
+.compact-felt .table-welcome button { min-width: 0; font-size: 12px; min-height: 44px; }
+.compact-felt .table-welcome small { font-size: 10px; }
+.compact-felt .table-welcome button span { margin-left: 5px; }
+.compact-felt .bet-chip { display: none; }
+.compact-felt .mobile-contribution { display: block; color: #bed2c9; font-size: 9px; }
+.compact-felt .coins { display: none; }
+.compact-felt .bet-amount { padding: 1px 4px; }
+.compact-felt .win-badge { font-size: 10px; padding: 2px 6px; bottom: -21px; }

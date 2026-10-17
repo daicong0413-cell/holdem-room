@@ -5,9 +5,8 @@
  * the maths layer: equity against the live opponents, compared with what the pot
  * is charging. That answer is always available and always cheap.
  *
- * Only when `classifySpot` says the arithmetic does not settle the question does
- * the language model get asked — and even then it only *chooses between* the
- * candidates the maths layer produced. If the model is slow, down, rate-limited
+ * When configured, the model chooses every action from the legal candidates.
+ * If the model is slow, down, rate-limited
  * or returns nonsense, the local answer is used and play continues.
  *
  * Keeping the character in parameters also means a bot plays consistently
@@ -94,14 +93,10 @@ export function findPersona(id: string): PersonaConfig {
 }
 
 export interface BotDeciderOptions {
-  /** When present, key decisions are put to the language model. */
+  /** When present, every decision is put to the language model. */
   readonly advisor?: Advisor | undefined;
   /** Resolves the current backend after an operator changes live configuration. */
   readonly getAdvisor?: () => Advisor | null;
-  /** Called with the model's table talk, if any. */
-  readonly onTalk?: ((text: string) => void) | undefined;
-  /** Hard cap per hand per seat; the main cost guard. */
-  readonly maxAdvisorCallsPerHand?: number;
 }
 
 export type BotBrain = (context: BotContext) => PlayerAction | Promise<PlayerAction>;
@@ -111,10 +106,6 @@ export function makeBotDecider(
   rng: Rng,
   options: BotDeciderOptions = {},
 ): BotBrain {
-  const maxCalls = options.maxAdvisorCallsPerHand ?? 2;
-  /** seat -> hand currently in progress and how many model calls it has used. */
-  const budget = new Map<number, { handId: number; count: number }>();
-
   return (context: BotContext): PlayerAction | Promise<PlayerAction> => {
     const liveOpponents = Math.max(1, context.opponents.filter((opponent) => !opponent.folded).length);
 
@@ -134,7 +125,7 @@ export function makeBotDecider(
     const local = chooseLocally(context, config, strength, required, rng);
 
     const advisor = options.getAdvisor ? options.getAdvisor() : options.advisor;
-    if (advisor == null) return local;
+    if (advisor == null || context.signal?.aborted) return local;
 
     const spot = classifySpot({
       street: context.street,
@@ -147,22 +138,15 @@ export function makeBotDecider(
       equity: strength,
       requiredEquity: required,
     });
-    if (!spot.important) return local;
-
-    const entry = budget.get(context.seatIndex);
-    const used = entry !== undefined && entry.handId === context.handId ? entry.count : 0;
-    if (used >= maxCalls) return local;
-    budget.set(context.seatIndex, { handId: context.handId, count: used + 1 });
-
     const request: AdvisorRequest = {
       persona: config,
       context,
       candidates: buildCandidates(context),
       equity: strength,
       requiredEquity: required,
-      reasons: spot.reasons,
+      reasons: spot.reasons.length > 0 ? spot.reasons : ["常规行动；所有行动均由模型决策"],
     };
-    return consult(advisor, request, local, options.onTalk);
+    return consult(advisor, request, local);
   };
 }
 
@@ -171,12 +155,13 @@ async function consult(
   advisor: Advisor,
   request: AdvisorRequest,
   local: PlayerAction,
-  onTalk: ((text: string) => void) | undefined,
 ): Promise<PlayerAction> {
-  const verdict: AdvisorVerdict | null = await advisor.review(request);
-  if (verdict === null) return local;
-  if (verdict.talk !== null && onTalk !== undefined) onTalk(verdict.talk);
-  return verdict.action;
+  try {
+    const verdict: AdvisorVerdict | null = await advisor.review(request);
+    return verdict?.action ?? local;
+  } catch {
+    return local;
+  }
 }
 
 /**

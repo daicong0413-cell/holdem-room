@@ -10,9 +10,13 @@ import {
   useState,
 } from "react";
 
+import { useI18n, LanguageSwitch } from "./i18n.tsx";
+import { actionLabel, handLabel, streetLabel, PERSONA_EN } from "./locale.ts";
+import { BotManager, BuyInDialog, Dialog, SeatPicker } from "./RoomControls.tsx";
+
 import { allInIsDistinct, potBetAmount } from "./betting.ts";
 import { readBackendJson } from "./backend.ts";
-import { displayCard, displayRank, handLabelEn, handNameZh, isRedSuit, money, streetLabelZh, SUIT_SYMBOLS } from "../shared/format.ts";
+import { displayCard, displayRank, isRedSuit, money, SUIT_SYMBOLS } from "../shared/format.ts";
 import type { AdvisorStatsView } from "../server/advisor.ts";
 import type {
   ClientMessage,
@@ -45,6 +49,7 @@ interface LlmStatus {
 }
 
 function LlmActivity({ status, onUpdate }: { status: LlmStatus; onUpdate: (next: LlmStatus) => void }): ReactElement | null {
+  const { t, language } = useI18n();
   const [testing, setTesting] = useState(false);
   const [testError, setTestError] = useState<string | null>(null);
   if (!status.enabled) return null;
@@ -61,9 +66,9 @@ function LlmActivity({ status, onUpdate }: { status: LlmStatus; onUpdate: (next:
       const response = await fetch("/api/llm/test", { method: "POST", headers: { "content-type": "application/json" } });
       const payload = await response.json() as { ok?: boolean; error?: string; status?: LlmStatus };
       if (payload.status) onUpdate(payload.status);
-      if (!response.ok || (!payload.ok && !payload.status)) setTestError(payload.error ?? "连接测试失败");
+      if (!response.ok || (!payload.ok && !payload.status)) setTestError(payload.error ?? t("连接测试失败"));
     } catch {
-      setTestError("无法连接游戏服务");
+      setTestError(t("无法连接游戏服务"));
     } finally {
       setTesting(false);
     }
@@ -72,16 +77,16 @@ function LlmActivity({ status, onUpdate }: { status: LlmStatus; onUpdate: (next:
   return (
     <div className="llm-activity">
       <div className="llm-activity-head">
-        <strong>API 调用</strong>
-        <span>{calls === 0 ? "等待关键决策" : pending > 0 ? `${pending} 次请求中` : stats?.lastError ? "最近调用失败" : "已成功调用"}</span>
+        <strong>{t("API 调用")}</strong>
+        <span>{calls === 0 ? t("等待机器人行动") : pending > 0 ? t(`${pending} 次请求中`, `${pending} pending`) : stats?.lastError ? t("最近调用失败") : t("已成功调用")}</span>
       </div>
-      <div className="llm-counts"><span>总计 {calls}</span><span>成功 {successes}</span><span>失败 {failures}</span></div>
-      <div className="llm-tokens" title="接口返回的累计 token；重启服务或更换配置后清零。包含格式不合法但接口已返回的响应。">
-        Token · 输入 {(stats?.promptTokens ?? 0).toLocaleString("en-US")} / 输出 {(stats?.completionTokens ?? 0).toLocaleString("en-US")}
+      <div className="llm-counts"><span>{t("总计", "Total")} {calls}</span><span>{t("成功", "Succeeded")} {successes}</span><span>{t("失败", "Failed")} {failures}</span></div>
+      <div className="llm-tokens" title={t("接口返回的累计 token；重启服务或更换配置后清零。包含格式不合法但接口已返回的响应。")}>
+        Token · {t("输入", "In")} {(stats?.promptTokens ?? 0).toLocaleString("en-US")} / {t("输出", "Out")} {(stats?.completionTokens ?? 0).toLocaleString("en-US")}
       </div>
-      {testError || stats?.lastError ? <p className="llm-diagnostic" role="status">{testError ?? stats?.lastError}</p> : null}
+      {testError || stats?.lastError ? <p className="llm-diagnostic" role="status">{t(testError ?? stats?.lastError ?? "")}</p> : null}
       {status.configurable ? <button type="button" className="ghost llm-test" onClick={() => void test()} disabled={testing}
-        title="测试当前已保存的配置，会产生一次请求和少量 token 用量。">{testing ? "正在测试…" : "测试连接"}</button> : null}
+        title={t("测试当前已保存的配置，会产生一次请求和少量 token 用量。")}>{testing ? t("正在测试…") : t("测试连接")}</button> : null}
     </div>
   );
 }
@@ -158,7 +163,8 @@ function Card({
 }
 
 function CardBack({ size = "sm" }: { size?: "sm" | "md" | "lg" }): ReactElement {
-  return <span className={`card card-${size} card-back`} aria-label="暗牌" />;
+  const { t, language } = useI18n();
+  return <span className={`card card-${size} card-back`} aria-label={t("暗牌")} />;
 }
 
 // ------------------------------------------------------------------ geometry
@@ -178,9 +184,9 @@ const FELT_RAIL = 22;
  * app shell and not from its contents; and the scaled felt is absolutely
  * positioned, so it can never feed its own size back into the measurement.
  */
-function useFeltScale(): { ref: RefObject<HTMLElement | null>; scale: number } {
+function useFeltScale(): { ref: RefObject<HTMLElement | null>; scale: number; compact: boolean; width: number; height: number } {
   const ref = useRef<HTMLElement>(null);
-  const [scale, setScale] = useState(1);
+  const [layout, setLayout] = useState({ scale: 1, compact: false, width: FELT_BASE_WIDTH, height: FELT_BASE_HEIGHT });
 
   useEffect(() => {
     const area = ref.current;
@@ -189,21 +195,25 @@ function useFeltScale(): { ref: RefObject<HTMLElement | null>; scale: number } {
     const measure = (): void => {
       const rect = area.getBoundingClientRect();
       const style = getComputedStyle(area);
+      const compact = rect.width <= 600;
+      const width = compact ? 340 : FELT_BASE_WIDTH;
+      const height = compact ? 400 : FELT_BASE_HEIGHT;
+      const rail = compact ? 12 : FELT_RAIL;
       const available = {
         width:
           rect.width -
           parseFloat(style.paddingLeft) -
           parseFloat(style.paddingRight) -
-          FELT_RAIL * 2,
+          rail * 2,
         height:
           rect.height -
           parseFloat(style.paddingTop) -
           parseFloat(style.paddingBottom) -
-          FELT_RAIL * 2,
+          rail * 2,
       };
       if (available.width <= 0 || available.height <= 0) return;
-      const fit = Math.min(available.width / FELT_BASE_WIDTH, available.height / FELT_BASE_HEIGHT);
-      setScale(Math.max(0.2, Math.min(fit, 2.4)));
+      const fit = Math.min(available.width / width, available.height / height);
+      setLayout({ scale: Math.max(0.2, Math.min(fit, 2.4)), compact, width, height });
     };
 
     measure();
@@ -216,7 +226,7 @@ function useFeltScale(): { ref: RefObject<HTMLElement | null>; scale: number } {
     };
   }, []);
 
-  return { ref, scale };
+  return { ref, ...layout };
 }
 
 function seatSlot(viewerSeat: number | null, seatIndex: number, total: number): number {
@@ -227,6 +237,22 @@ function seatSlot(viewerSeat: number | null, seatIndex: number, total: number): 
 function slotPosition(slot: number, total: number, radiusX: number, radiusY: number): { left: string; top: string } {
   const angle = Math.PI / 2 + (slot * 2 * Math.PI) / total;
   return { left: `${50 + radiusX * Math.cos(angle)}%`, top: `${50 + radiusY * Math.sin(angle)}%` };
+}
+
+function phoneSeatPosition(slot: number, total: number): { left: string; top: string } {
+  if (slot === 0) return { left: "50%", top: "88%" };
+  const positions: Record<number, Array<[number, number]>> = {
+    2: [[50, 12]],
+    3: [[18, 25], [82, 25]],
+    4: [[15, 48], [50, 12], [85, 48]],
+    5: [[15, 65], [22, 18], [78, 18], [85, 65]],
+    6: [[14, 69], [14, 29], [50, 12], [86, 29], [86, 69]],
+    7: [[14, 71], [14, 42], [34, 12], [66, 12], [86, 42], [86, 71]],
+    8: [[14, 73], [14, 45], [18, 18], [50, 10], [82, 18], [86, 45], [86, 73]],
+    9: [[14, 75], [14, 49], [14, 23], [37, 8], [68, 8], [86, 28], [86, 53], [86, 78]],
+  };
+  const [left, top] = positions[total]?.[slot - 1] ?? [50, 12];
+  return { left: `${left}%`, top: `${top}%` };
 }
 
 function blindSeats(view: TableView): { small: number | null; big: number | null } {
@@ -329,6 +355,17 @@ function useGame(): {
         case "state":
           setView(message.view);
           break;
+        case "roomClosed":
+          if (retry.current?.timer != null) window.clearTimeout(retry.current.timer);
+          retry.current = null;
+          socketRef.current = null;
+          socket.close();
+          setStatus("idle");
+          setView(null);
+          setHistoryEntry(null);
+          setNotice("所有真人已离桌，牌桌已自动关闭。");
+          window.history.replaceState(null, "", window.location.pathname);
+          break;
         case "handHistory":
           setHistoryEntry(message.entry);
           break;
@@ -392,8 +429,10 @@ function useGame(): {
     const state = retry.current;
     if (state?.timer != null) window.clearTimeout(state.timer);
     retry.current = null;
+    if (socketRef.current?.readyState === WebSocket.OPEN) socketRef.current.send(JSON.stringify({ t: "leave" }));
     socketRef.current?.close();
     socketRef.current = null;
+    window.history.replaceState(null, "", window.location.pathname);
     setStatus("idle");
     setConnectionError(null);
     setView(null);
@@ -457,6 +496,8 @@ function Seat({
   winnings,
   bestCards,
   defaultBuyIn,
+  minBuyIn,
+  canSit,
   takenPersonas,
   expanded,
   onToggle,
@@ -486,18 +527,17 @@ function Seat({
   onToggle: () => void;
   /** Pre-filled buy-in for this seat's amount box. */
   defaultBuyIn: number;
+  minBuyIn: number;
+  canSit: boolean;
   onSit: (seat: number, buyIn: number) => void;
   /** Give up the seat; the server defers it until the hand settles. */
   onStand: () => void;
-  /** Takes a bot off the table; only offered between hands. */
+  /** Takes a bot off the table after the current hand settles. */
   onRemoveBot: (seat: number) => void;
-  onAddBot: (seat: number, persona: string) => void;
+  onAddBot: (seat: number, persona: string, buyIn: number) => void;
 }): ReactElement {
-  const [persona, setPersona] = useState(personas[0]?.id ?? "gto");
-  const [buyIn, setBuyIn] = useState(defaultBuyIn);
-  // One of each persona: a table with three GTOpros is a bug, not a feature.
+  const { t, language } = useI18n();
   const available = personas.filter((option) => !takenPersonas.has(option.id));
-  const chosen = available.some((option) => option.id === persona) ? persona : (available[0]?.id ?? "");
 
   if (seat.playerId === null) {
     return (
@@ -507,50 +547,21 @@ function Seat({
           className="empty-seat-trigger"
           onClick={onToggle}
           aria-expanded={expanded}
-          aria-label={`选择空位 ${seat.index + 1}`}
+          aria-label={t(`选择空位 ${seat.index + 1}`, `Choose open seat ${seat.index + 1}`)}
         >
           <span className="empty-seat-plus" aria-hidden="true">+</span>
-          <span>空位 {seat.index + 1}</span>
+          <span>{t(`空位 ${seat.index + 1}`, `Seat ${seat.index + 1}`)}</span>
         </button>
         {/* Taking a seat is always possible: mid-hand you simply wait for the
             next deal, which the server handles by not dealing you in. */}
         {expanded ? (
           <div className={`seat-picker${parseFloat(position.top) > 60 ? " above" : ""}`}>
             <div className="seat-picker-head">
-              <strong>空位 {seat.index + 1}</strong>
-              <button type="button" onClick={onToggle} aria-label="收起座位选项">×</button>
+              <strong>{t(`空位 ${seat.index + 1}`, `Open seat ${seat.index + 1}`)}</strong>
+              <button type="button" onClick={onToggle} aria-label={t("收起座位选项")}>×</button>
             </div>
-            <div className="seat-actions">
-          <label className="buyin" title="上桌筹码">
-            <span>$</span>
-            <input
-              type="number"
-              min={20}
-              step={10}
-              value={buyIn}
-              onChange={(event) => setBuyIn(Math.max(0, Math.floor(Number(event.target.value) || 0)))}
-              aria-label={`空位 ${seat.index + 1} 的买入筹码`}
-            />
-          </label>
-          <button type="button" onClick={() => onSit(seat.index, buyIn)}>
-            入座
-          </button>
-          {canManage ? (
-            <>
-              <select aria-label={`空位 ${seat.index + 1} 的对手人格`} value={chosen} onChange={(event) => setPersona(event.target.value)} disabled={available.length === 0}>
-                {available.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {option.name}
-                  </option>
-                ))}
-              </select>
-              <button type="button" onClick={() => onAddBot(seat.index, chosen)} disabled={available.length === 0}>
-                加机器人
-              </button>
-            </>
-          ) : null}
-            </div>
-            {!canManage ? <div className="seat-note">下一手发牌</div> : null}
+            <SeatPicker index={seat.index} defaultBuyIn={defaultBuyIn} minBuyIn={minBuyIn} personas={available}
+              canManage={canManage} canSit={canSit} onSit={onSit} onAddBot={onAddBot} />
           </div>
         ) : null}
       </div>
@@ -588,42 +599,44 @@ function Seat({
               would push the cards off-centre and the bet chip would land on
               top of them. */}
           {seat.lastAction ? (
-            <span className={`seat-action ${labelOnLeft ? "on-left" : "on-right"}`}>{seat.lastAction}</span>
+            <span className={`seat-action ${labelOnLeft ? "on-left" : "on-right"}`}>{actionLabel(seat.lastAction, language)}</span>
           ) : null}
         </div>
         <div className="seat-plate">
           <span className="seat-row">
             <span className="seat-name">{seat.name}</span>
             {seat.isYou && seat.handCategory != null ? (
-              <span className="seat-hand" title="Your best hand with the current board">{handLabelEn(seat.handCategory)}</span>
-            ) : seat.isYou ? <span className="you-label">You</span> : null}
+              <span className="seat-hand" title={t("你的最佳牌型")}>{handLabel(seat.handCategory, language)}</span>
+            ) : seat.isYou ? <span className="you-label">{t("You")}</span> : null}
             <span className="seat-badges">
-            {isButton ? <span className="badge dealer" title="庄家按钮">D</span> : null}
+            {isButton ? <span className="badge dealer" title={t("庄家按钮")}>D</span> : null}
             {isSmallBlind ? <span className="badge blind">SB</span> : null}
             {isBigBlind ? <span className="badge blind">BB</span> : null}
-            {seat.allIn ? <span className="badge allin">All-in</span> : null}
-            {seat.folded ? <span className="badge folded">Fold</span> : null}
+            {seat.allIn ? <span className="badge allin">{t("All-in")}</span> : null}
+            {seat.folded ? <span className="badge folded">{t("Fold")}</span> : null}
             </span>
           </span>
           {/* Chips live on their own line, under the name. */}
           <span className="seat-row">
             <span className="seat-stack">{money(seat.stack)}</span>
             {seat.isYou ? (
-              <button type="button" className="stand-btn" onClick={onStand} title="离座，把筹码收回来">
-                离座
+              <button type="button" className="stand-btn" disabled={seat.leaving} onClick={onStand} title={t("离座，把筹码收回来")}>
+                {t("离座")}
               </button>
             ) : null}
             {!seat.isYou && seat.isBot && canManage ? (
               <button
                 type="button"
                 className="stand-btn"
+                disabled={seat.leaving}
                 onClick={() => onRemoveBot(seat.index)}
-                title="让这个机器人离桌"
+                title={t("让这个机器人离桌")}
               >
-                离桌
+                {t("离桌")}
               </button>
             ) : null}
           </span>
+          {seat.streetCommitted > 0 && !showResult ? <span className="mobile-contribution">{t("下注")} {money(seat.streetCommitted)}</span> : null}
         </div>
         {/* Below the plate, never over the cards. */}
         {isWinner ? <span className="win-badge">WIN +{money(winnings)}</span> : null}
@@ -653,6 +666,7 @@ function ActionBar({
   onAction: (action: ClientMessage & { t: "action" }) => void;
   countdown: number | null;
 }): ReactElement | null {
+  const { t, language } = useI18n();
   const legal = view.legal;
   const [target, setTarget] = useState(legal?.minRaiseTo ?? 0);
   /** Raw text while the player is typing an amount, so we do not fight them. */
@@ -687,8 +701,8 @@ function ActionBar({
   return (
     <div className="action-cluster">
       <div className="decision-summary">
-        <strong>Your turn</strong>
-        <span>{legal.canCheck ? "Check is free" : `Call ${money(legal.callCost)} · Pot after call ${money(totalPot + legal.callCost)}`}</span>
+        <strong>{t("Your turn")}</strong>
+        <span>{legal.canCheck ? t("Check is free") : t(`跟注 ${money(legal.callCost)} · 跟注后底池 ${money(totalPot + legal.callCost)}`, `Call ${money(legal.callCost)} · Pot after call ${money(totalPot + legal.callCost)}`)}</span>
         {countdown !== null ? <span className={`decision-clock${countdown <= 10 ? " urgent" : ""}`}>{countdown}s</span> : null}
       </div>
       {legal.canRaise ? (
@@ -702,9 +716,9 @@ function ActionBar({
               setTyped(null);
               setTarget(Number(event.target.value));
             }}
-            aria-label="加注额"
+            aria-label={t("加注额")}
           />
-          <label className="buyin raise-buyin" title="加注金额">
+          <label className="buyin raise-buyin" title={t("加注金额")}>
             <span>$</span>
             <input
               type="number"
@@ -719,19 +733,19 @@ function ActionBar({
                 if (Number.isFinite(parsed) && parsed > 0) setTarget(parsed);
               }}
               onBlur={() => setTyped(null)}
-              aria-label="手动输入加注金额"
+              aria-label={t("手动输入加注金额")}
             />
           </label>
           <div className="raise-presets">
-            <button type="button" onClick={() => { setTyped(null); setTarget(potBet(1 / 3)); }}>⅓ Pot</button>
+            <button type="button" onClick={() => { setTyped(null); setTarget(potBet(1 / 3)); }}>{t("⅓ Pot")}</button>
             <button type="button" onClick={() => { setTyped(null); setTarget(potBet(0.5)); }}>
-              ½ Pot
+              {t("½ Pot")}
             </button>
             <button type="button" onClick={() => { setTyped(null); setTarget(potBet(1)); }}>
-              Pot
+              {t("Pot")}
             </button>
             <button type="button" onClick={() => { setTyped(null); setTarget(legal.maxRaiseTo); }}>
-              All-in
+              {t("All-in")}
             </button>
           </div>
         </div>
@@ -739,19 +753,19 @@ function ActionBar({
 
       <div className="action-buttons">
         <button type="button" className="danger" onClick={() => onAction({ t: "action", action: { type: "fold" } })}>
-          Fold
+          {t("Fold")}
         </button>
 
         {legal.canCheck ? (
           <button type="button" onClick={() => onAction({ t: "action", action: { type: "check" } })}>
-            Check
+            {t("Check")}
           </button>
         ) : null}
 
         {legal.canCall ? (
           <button type="button" onClick={() => onAction({ t: "action", action: { type: "call" } })}>
-            Call {money(legal.callCost)}
-            {legal.callCost < legal.toCall ? " (All-in)" : ""}
+            {t("跟注")} {money(legal.callCost)}
+            {legal.callCost < legal.toCall ? t("（全下）", " (All-in)") : ""}
           </button>
         ) : null}
 
@@ -761,7 +775,7 @@ function ActionBar({
             className="primary"
             onClick={() => onAction({ t: "action", action: { type: "raise", to: clamped } })}
           >
-            {legal.toCall > 0 ? `Raise to ${money(clamped)}` : `Bet ${money(clamped)}`}
+            {legal.toCall > 0 ? t(`加注到 ${money(clamped)}`, `Raise to ${money(clamped)}`) : t(`下注 ${money(clamped)}`, `Bet ${money(clamped)}`)}
           </button>
         ) : showAllIn ? (
           <button
@@ -769,7 +783,7 @@ function ActionBar({
             className="primary"
             onClick={() => onAction({ t: "action", action: { type: "raise", to: legal.maxRaiseTo } })}
           >
-            All-in {money(legal.maxRaiseTo)}
+            {t("全下")} {money(legal.maxRaiseTo)}
           </button>
         ) : null}
 
@@ -781,10 +795,13 @@ function ActionBar({
 function ChatBox({
   chat,
   onSend,
+  compact = false,
 }: {
   chat: ChatLine[];
   onSend: (text: string) => void;
+  compact?: boolean;
 }): ReactElement {
+  const { t, language } = useI18n();
   const [draft, setDraft] = useState("");
   const linesRef = useRef<HTMLDivElement | null>(null);
 
@@ -801,11 +818,10 @@ function ChatBox({
     setDraft("");
   };
 
-  return (
-    <section className="chat-box">
+  const content = <>
       <div className="chat-lines" ref={linesRef}>
         {chat.length === 0 ? (
-          <span className="chat-empty">桌边聊天</span>
+          <span className="chat-empty">{t("桌边聊天")}</span>
         ) : (
           chat.map((line, index) => (
             <div key={index} className="chat-line">
@@ -820,15 +836,16 @@ function ChatBox({
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           maxLength={200}
-          placeholder="说点什么…"
-          aria-label="聊天输入框"
+          placeholder={t("说点什么…")}
+          aria-label={t("聊天输入框")}
         />
         <button type="submit" disabled={draft.trim().length === 0}>
-          发送
+          {t("发送")}
         </button>
       </form>
-    </section>
-  );
+    </>;
+  return compact ? <details className="chat-box compact-chat"><summary>{t("桌边聊天")} · {chat.length}</summary>{content}</details>
+    : <section className="chat-box">{content}</section>;
 }
 
 // ------------------------------------------------------------------ settings
@@ -844,6 +861,7 @@ function SettingsDialog({
   onClose: () => void;
   onSave: (patch: RoomSettingsPatch) => void;
 }): ReactElement {
+  const { t, language } = useI18n();
   /** Remembers the interval so toggling auto-start off and on is not lossy. */
   const [autoStartLast, setAutoStartLast] = useState(
     view.settings.autoStartSeconds > 0 ? view.settings.autoStartSeconds : 6,
@@ -920,7 +938,7 @@ function SettingsDialog({
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" onClick={(event) => event.stopPropagation()}>
         <header>
-          <h2>房间设置</h2>
+          <h2>{t("房间设置")}</h2>
           <button type="button" className="ghost" onClick={onClose}>
             ✕
           </button>
@@ -928,45 +946,45 @@ function SettingsDialog({
 
         <div className="settings-grid">
           <label className={anyoneSeated ? "disabled" : ""}>
-            <span>座位数{anyoneSeated ? "（有人入座后不能改）" : ""}</span>
+            <span>{t("座位数")}{anyoneSeated ? t("（有人入座后不能改）") : ""}</span>
             {number("seats", "seats", anyoneSeated)}
           </label>
 
           <label className={gameStarted ? "disabled" : ""}>
-            <span>模式{gameStarted ? "（开局后不能改）" : ""}</span>
+            <span>{t("模式")}{gameStarted ? t("（开局后不能改）") : ""}</span>
             <select
               value={draft.mode}
               disabled={gameStarted}
               onChange={(event) => setDraft({ ...draft, mode: event.target.value as GameMode })}
             >
-              <option value="cash">现金局（盲注固定）</option>
-              <option value="tournament">锦标赛（盲注递增）</option>
+              <option value="cash">{t("现金局（盲注固定）")}</option>
+              <option value="tournament">{t("锦标赛（盲注递增）")}</option>
             </select>
           </label>
 
           <label>
-            <span>起始筹码（每个新入座玩家的默认买入）</span>
+            <span>{t("起始筹码（每个新入座玩家的默认买入）")}</span>
             {number("startingStack", "startingStack")}
           </label>
 
           <label>
-            <span>行动限时（秒，0 = 关闭）</span>
+            <span>{t("行动限时（秒，0 = 关闭）")}</span>
             {number("actionTimeoutSeconds", "actionTimeoutMs")}
           </label>
 
           <label className={handInProgress ? "disabled" : ""}>
-            <span>小盲{handInProgress ? "（本手结束可改）" : ""}</span>
+            <span>{t("小盲")}{handInProgress ? t("（本手结束可改）") : ""}</span>
             {number("smallBlind", "smallBlind", handInProgress)}
           </label>
 
           <label className={handInProgress ? "disabled" : ""}>
-            <span>大盲{handInProgress ? "（本手结束可改）" : ""}</span>
+            <span>{t("大盲")}{handInProgress ? t("（本手结束可改）") : ""}</span>
             {number("bigBlind", "bigBlind", handInProgress)}
           </label>
 
           {/* Same shape as every other field: title on top, control below. */}
           <div className="switch-field">
-            <span>自动开始下一手牌</span>
+            <span>{t("自动开始下一手牌")}</span>
             <label className="switch">
               <input
                 type="checkbox"
@@ -976,11 +994,11 @@ function SettingsDialog({
                 }
               />
               <span className="track" aria-hidden="true" />
-              <span className="switch-state">{draft.autoStartSeconds > 0 ? "开启" : "关闭"}</span>
+              <span className="switch-state">{draft.autoStartSeconds > 0 ? t("开启") : t("关闭")}</span>
             </label>
             {draft.autoStartSeconds > 0 ? (
               <label className="switch-sub">
-                <span>间隔（秒）</span>
+                <span>{t("间隔（秒）")}</span>
                 <input
                   type="number"
                   min={bound("autoStartSeconds").min}
@@ -994,12 +1012,12 @@ function SettingsDialog({
                 />
               </label>
             ) : (
-              <em className="switch-note">手动开始：每手结束点「开始下一手」</em>
+              <em className="switch-note">{t("手动开始：每手结束点「开始下一手」")}</em>
             )}
           </div>
 
           <div className="switch-field">
-            <span>机器人输光后自动重新买入</span>
+            <span>{t("机器人输光后自动重新买入")}</span>
             <label className="switch">
               <input
                 type="checkbox"
@@ -1007,21 +1025,21 @@ function SettingsDialog({
                 onChange={(event) => setDraft({ ...draft, botAutoRebuy: event.target.checked })}
               />
               <span className="track" aria-hidden="true" />
-              <span className="switch-state">{draft.botAutoRebuy ? "开启" : "关闭"}</span>
+              <span className="switch-state">{draft.botAutoRebuy ? t("开启") : t("关闭")}</span>
             </label>
             <em className="switch-note">
-              {draft.botAutoRebuy ? "输光的机器人会自动补齐筹码" : "输光的机器人坐着看戏，不再补筹码"}
+              {draft.botAutoRebuy ? t("输光的机器人会按各自买入金额重新买入") : t("输光的机器人坐着看戏，不再补筹码")}
             </em>
           </div>
 
           {draft.mode === "tournament" ? (
             <>
               <label className={gameStarted ? "disabled" : ""}>
-                <span>每多少手升盲{gameStarted ? "（开局后不能改）" : ""}</span>
+                <span>{t("每多少手升盲")}{gameStarted ? t("（开局后不能改）") : ""}</span>
                 {number("blindLevelHands", "blindLevelHands", gameStarted)}
               </label>
               <label className={gameStarted ? "disabled" : ""}>
-                <span>每次盲注倍数{gameStarted ? "（开局后不能改）" : ""}</span>
+                <span>{t("每次盲注倍数")}{gameStarted ? t("（开局后不能改）") : ""}</span>
                 {number("blindGrowth", "blindGrowth", gameStarted)}
               </label>
             </>
@@ -1030,18 +1048,18 @@ function SettingsDialog({
 
         <p className="fine-print">
           {draft.mode === "tournament"
-            ? `锦标赛：当前第 ${view.settings.level} 级，盲注 ${view.smallBlind}/${view.bigBlind}${
+            ? t(`锦标赛：当前第 ${view.settings.level} 级，盲注 ${view.smallBlind}/${view.bigBlind}${
                 view.settings.handsUntilNextLevel === null ? "" : `，还有 ${view.settings.handsUntilNextLevel} 手升级`
-              }。`
-            : "现金局：盲注保持不变，可以随时调整。"}
+              }。`, `Tournament · Level ${view.settings.level} · Blinds ${view.smallBlind}/${view.bigBlind} · ${view.settings.handsUntilNextLevel ?? 0} hands to next level`)
+            : t("现金局：盲注保持不变，可以随时调整。")}
         </p>
 
         <footer>
           <button type="button" onClick={onClose}>
-            取消
+            {t("取消")}
           </button>
           <button type="button" className="primary" onClick={save}>
-            保存
+            {t("保存")}
           </button>
         </footer>
       </div>
@@ -1052,15 +1070,16 @@ function SettingsDialog({
 // ------------------------------------------------------------------- history
 
 function HistoryDialog({ entry, onClose }: { entry: HandHistoryEntry; onClose: () => void }): ReactElement {
+  const { t, language } = useI18n();
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal history-modal" onClick={(event) => event.stopPropagation()}>
         <header>
           <h2>
-            第 {entry.handId} 手
+            {t(`第 ${entry.handId} 手`, `Hand #${entry.handId}`)}
             <span className="history-meta">
-              盲注 {entry.smallBlind}/{entry.bigBlind}
-              {entry.level > 1 ? ` · 第 ${entry.level} 级` : ""} · {entry.reason === "fold" ? "弃牌结束" : "摊牌"}
+              {t("盲注")} {entry.smallBlind}/{entry.bigBlind}
+              {entry.level > 1 ? t(` · 第 ${entry.level} 级`, ` · Level ${entry.level}`) : ""} · {entry.reason === "fold" ? t("弃牌结束") : t("摊牌")}
             </span>
           </h2>
           <button type="button" className="ghost" onClick={onClose}>
@@ -1070,7 +1089,7 @@ function HistoryDialog({ entry, onClose }: { entry: HandHistoryEntry; onClose: (
 
         <div className="history-board">
           {entry.board.length === 0 ? (
-            <span className="board-hint">没有公共牌</span>
+            <span className="board-hint">{t("没有公共牌")}</span>
           ) : (
             entry.board.map((card, index) => <Card key={`${card}-${index}`} card={card} size="md" />)
           )}
@@ -1084,8 +1103,8 @@ function HistoryDialog({ entry, onClose }: { entry: HandHistoryEntry; onClose: (
                 {seat.hole
                   ? seat.hole.map(displayCard).join(" ")
                   : seat.folded
-                    ? "已弃牌（底牌不入档）"
-                    : "未亮牌"}
+                    ? t("已弃牌（底牌不入档）")
+                    : t("未亮牌")}
               </span>
               <span className={seat.net >= 0 ? "hs-net up" : "hs-net down"}>
                 {seat.net > 0 ? "+" : ""}
@@ -1095,11 +1114,11 @@ function HistoryDialog({ entry, onClose }: { entry: HandHistoryEntry; onClose: (
           ))}
         </ul>
 
-        <h3 className="history-sub">行动记录</h3>
+        <h3 className="history-sub">{t("行动记录")}</h3>
         <ol className="log history-log">
           {entry.log.map((line, index) => (
             <li key={index} className={`log-${line.street}`}>
-              {line.text}
+              {language === "en" ? line.textEn ?? line.text : line.text}
             </li>
           ))}
         </ol>
@@ -1134,6 +1153,7 @@ function TableScreen({
   onRequestHistory: (handId: number) => void;
   onLlm: (next: LlmStatus) => void;
 }): ReactElement {
+  const { t, language } = useI18n();
   const [copied, setCopied] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [tab, setTab] = useState<"live" | "history">("live");
@@ -1148,14 +1168,16 @@ function TableScreen({
   // The dock follows the table, but only part of the way: a fullscreen table
   // should not turn the buttons into billboards.
   const uiScale = Math.min(1.45, Math.max(0.9, felt.scale));
-  const [rebuyAmount, setRebuyAmount] = useState(view.settings.startingStack);
+  const [buyInOpen, setBuyInOpen] = useState(false);
+  const [botsOpen, setBotsOpen] = useState(false);
 
   const heroSeat = view.seats.find((seat) => seat.isYou)?.index ?? -1;
   const heroSeated = heroSeat >= 0;
+  const hero = view.seats.find((seat) => seat.isYou);
   const heroStack = heroSeated ? (view.seats[heroSeat]?.stack ?? 0) : 0;
   const seatTotal = view.seats.length;
   const blinds = useMemo(() => blindSeats(view), [view]);
-  const canManageSeats = view.street === "complete" || view.handId === 0;
+  const canManageSeats = view.isHost;
   const showResult = view.result !== null;
   const occupiedSeats = view.seats.filter((seat) => seat.playerId !== null).length;
   const liveBets = view.seats.reduce((sum, seat) => sum + seat.streetCommitted, 0);
@@ -1190,7 +1212,7 @@ function TableScreen({
       setCopied(true);
       setTimeout(() => setCopied(false), 1800);
     } catch {
-      window.prompt("复制这个邀请链接发给朋友：", inviteUrl);
+      window.prompt(t("复制这个邀请链接发给朋友："), inviteUrl);
     }
   };
 
@@ -1205,7 +1227,7 @@ function TableScreen({
     for (const persona of opponents) {
       const seat = empty.shift();
       if (!seat) break;
-      onSend({ t: "addBot", seat: seat.index, persona: persona.id });
+      if (view.isHost) onSend({ t: "addBot", seat: seat.index, persona: persona.id, buyIn: view.settings.startingStack });
     }
     setSelectedSeat(null);
     onSend({ t: "startHand" });
@@ -1213,64 +1235,68 @@ function TableScreen({
 
   const modeChip =
     view.settings.mode === "tournament"
-      ? `锦标赛 第 ${view.settings.level} 级${
+      ? t(`锦标赛 第 ${view.settings.level} 级${
           view.settings.handsUntilNextLevel === null ? "" : ` · 还有 ${view.settings.handsUntilNextLevel} 手升盲`
-        }`
-      : "现金局";
+        }`, `Tournament · Level ${view.settings.level} · ${view.settings.handsUntilNextLevel ?? 0} hands to next level`)
+      : t("现金局");
 
   return (
-    <div className="room" style={{ "--ui-scale": uiScale } as CSSProperties}>
+    <div className={`room${felt.compact ? " compact-room" : ""}`} style={{ "--ui-scale": uiScale } as CSSProperties}>
       <header className="topbar">
+        <LanguageSwitch />
         <div className="table-brand">
           <span aria-hidden="true">♠</span>
-          <div><strong>德州扑克</strong><small>NPC 牌桌</small></div>
+          <div><strong>{t("德州扑克")}</strong><small>{t("NPC 牌桌")}</small></div>
         </div>
         <div className="room-chip">
-          房间 <strong>{view.roomCode}</strong>
+          {t("房间")} <strong>{view.roomCode}</strong>
         </div>
         <button type="button" onClick={copyInvite}>
-          {copied ? "已复制 ✓" : "复制邀请链接"}
+          {copied ? t("已复制 ✓") : t("复制邀请链接")}
         </button>
         <div className="blinds-chip">
-          盲注 <strong>{view.smallBlind}/{view.bigBlind}</strong>
+          {t("盲注")} <strong>{view.smallBlind}/{view.bigBlind}</strong>
         </div>
         <div className="mode-chip">{modeChip}</div>
         {view.isHost ? (
           <button type="button" onClick={() => setSettingsOpen(true)}>
-            ⚙ 房间设置
+            {t("⚙ 房间设置")}
           </button>
         ) : null}
+        {view.isHost ? <button type="button" onClick={() => setBotsOpen(true)}>{t("机器人管理", "Manage bots")}</button> : null}
+        {heroSeated && view.settings.mode === "cash" ? <button type="button" disabled={hero?.leaving} onClick={() => setBuyInOpen(true)}>{t("追加买入", "Add chips")}</button> : null}
+        {heroSeated ? <button type="button" className="mobile-stand" disabled={hero?.leaving} onClick={() => onSend({ t: "stand" })}>{t("离座")}</button> : null}
         <span className={`conn conn-${status}`}>
-          {status === "open" ? "已连接" : status === "connecting" ? "连接中…" : status === "closed" ? "重连中…" : "未连接"}
+          {status === "open" ? t("已连接") : status === "connecting" ? t("连接中…") : status === "closed" ? t("重连中…") : t("未连接")}
         </span>
         <button type="button" className="ghost" onClick={onLeave}>
-          离开
+          {t("离开")}
         </button>
       </header>
 
       <main className="table-area" ref={felt.ref}>
         <div className="table-caption">
-          <span>{modeChip} · {occupiedSeats}/{seatTotal} 人</span>
-          <span>{view.handId > 0 ? `第 ${view.handId} 手` : "准备开桌"}</span>
+          <span>{modeChip} · {occupiedSeats}/{seatTotal} {t("人", "players")}</span>
+          <span>{view.handId > 0 ? t(`第 ${view.handId} 手`, `Hand #${view.handId}`) : t("准备开桌")}</span>
         </div>
         <div
           className="felt-scale"
-          style={{ width: FELT_BASE_WIDTH * felt.scale, height: FELT_BASE_HEIGHT * felt.scale }}
+          style={{ width: felt.width * felt.scale, height: felt.height * felt.scale }}
         >
-          <div className="felt" style={{ transform: `scale(${felt.scale})` }}>
+          <div className={`felt${felt.compact ? " compact-felt" : ""}`} style={{ width: felt.width, height: felt.height, transform: `scale(${felt.scale})` }}>
           <div className="table-center">
             {view.handId === 0 ? (
               <div className="table-welcome">
                 <span className="welcome-suits" aria-hidden="true">♠ <i>♥</i> ♣ <i>♦</i></span>
-                <h2>好对手，就位。</h2>
-                <p>选一个空位坐下，或直接开始一桌。</p>
+                <h2>{t("好对手，就位。")}</h2>
+                <p>{t("选一个空位坐下，或直接开始一桌。")}</p>
                 <button type="button" className="primary" onClick={quickStart} disabled={status !== "open" || (!heroSeated && occupiedSeats === seatTotal)}>
-                  快速开桌 <span aria-hidden="true">↗</span>
+                  {t("快速开桌")} <span aria-hidden="true">↗</span>
                 </button>
-                <small>自动入座 · 最多 3 位机器人陪练</small>
+                <small>{t("自动入座 · 最多 3 位机器人陪练")}</small>
               </div>
             ) : <>
-            <div className="center-pot"><span>底池</span><strong>{money(view.pot)}</strong></div>
+            <div className="center-pot"><span>{t("底池")}</span><strong>{money(view.pot)}</strong></div>
             <div className="board">
               {view.board.length === 0 ? (
                 Array.from({ length: 5 }, (_, index) => <span className="board-placeholder" key={index} aria-hidden="true">♠</span>)
@@ -1282,8 +1308,8 @@ function TableScreen({
             </div>
             <div className="live-bets">
               {liveBets > 0
-                ? `本轮下注 ${money(liveBets)} · 总底池 ${money(view.pot + liveBets)}`
-                : view.result ? "本手已结算" : "筹码已收进底池"}
+                ? t(`本轮下注 ${money(liveBets)} · 总底池 ${money(view.pot + liveBets)}`, `Live bets ${money(liveBets)} · Total pot ${money(view.pot + liveBets)}`)
+                : view.result ? t("本手已结算") : t("筹码已收进底池")}
             </div>
             </>}
           </div>
@@ -1292,13 +1318,13 @@ function TableScreen({
             const slot = seatSlot(heroSeated ? heroSeat : null, seat.index, seatTotal);
             // The bottom seat carries the viewer's own (large) cards plus a name
             // plate, so it sits further inside the felt to stay clear of the dock.
-            const position = slotPosition(slot, seatTotal, 43, slot === 0 ? 29 : 36);
+            const position = felt.compact ? phoneSeatPosition(slot, seatTotal) : slotPosition(slot, seatTotal, 43, slot === 0 ? 29 : 36);
             return (
               <Seat
                 key={seat.index}
                 seat={seat}
                 position={position}
-                betPosition={slotPosition(slot, seatTotal, 31, slot === 0 ? 15 : 26)}
+                betPosition={felt.compact ? { left: `${50 + (parseFloat(position.left) - 50) * 0.64}%`, top: `${50 + (parseFloat(position.top) - 50) * 0.75}%` } : slotPosition(slot, seatTotal, 31, slot === 0 ? 15 : 26)}
                 isTurn={view.toActIndex === seat.index}
                 isButton={view.buttonIndex === seat.index}
                 isSmallBlind={blinds.small === seat.index}
@@ -1309,13 +1335,15 @@ function TableScreen({
                 winnings={payoutOf(seat.index)}
                 bestCards={bestBySeat.get(seat.index)}
                 defaultBuyIn={view.settings.startingStack}
+                minBuyIn={Math.max(20, view.bigBlind * 2)}
+                canSit={!heroSeated}
                 takenPersonas={takenPersonas}
-                expanded={selectedSeat === seat.index}
+                expanded={!felt.compact && selectedSeat === seat.index}
                 onToggle={() => setSelectedSeat(selectedSeat === seat.index ? null : seat.index)}
                 onSit={(index, amount) => { setSelectedSeat(null); onSend({ t: "sit", seat: index, buyIn: amount }); }}
                 onStand={() => onSend({ t: "stand" })}
                 onRemoveBot={(index) => onSend({ t: "removeBot", seat: index })}
-                onAddBot={(index, persona) => { setSelectedSeat(null); onSend({ t: "addBot", seat: index, persona }); }}
+                onAddBot={(index, persona, buyIn) => { setSelectedSeat(null); onSend({ t: "addBot", seat: index, persona, buyIn }); }}
               />
             );
           })}
@@ -1324,38 +1352,38 @@ function TableScreen({
       </main>
 
       <aside className="sidebar">
-        <div className="sidebar-heading"><span className="eyebrow">TABLE NOTES</span><strong>牌局动态</strong></div>
+        <div className="sidebar-heading"><span className="eyebrow">{t("TABLE NOTES")}</span><strong>{t("牌局动态")}</strong></div>
         <div className="sidebar-tabs">
           <button type="button" className={tab === "live" ? "active" : ""} onClick={() => setTab("live")}>
-            本手
+            {t("本手")}
           </button>
           <button type="button" className={tab === "history" ? "active" : ""} onClick={() => setTab("history")}>
-            历史 {view.history.length > 0 ? view.history.length : ""}
+            {t("历史")} {view.history.length > 0 ? view.history.length : ""}
           </button>
         </div>
 
         {tab === "live" ? (
           <ol className="log">
-            {view.log.length === 0 ? <li className="log-empty"><span aria-hidden="true">♧</span><strong>故事从第一手开始</strong><p>盲注、下注和结算会记录在这里。</p></li> : null}
+            {view.log.length === 0 ? <li className="log-empty"><span aria-hidden="true">♧</span><strong>{t("故事从第一手开始")}</strong><p>{t("盲注、下注和结算会记录在这里。")}</p></li> : null}
             {view.log.map((entry, index) => (
               <li key={index} className={`log-${entry.street}`}>
-                {entry.text}
+                {language === "en" ? entry.textEn ?? entry.text : entry.text}
               </li>
             ))}
           </ol>
         ) : view.history.length === 0 ? (
-          <p className="hint">还没有打完的牌局。每手结束后会自动归档，随时点开回看。</p>
+          <p className="hint">{t("还没有打完的牌局。每手结束后会自动归档，随时点开回看。")}</p>
         ) : (
           <ol className="history-list">
             {[...view.history].reverse().map((summary) => (
               <li key={summary.handId}>
                 <button type="button" onClick={() => onRequestHistory(summary.handId)}>
                   <span className="hl-top">
-                    <span className="hl-no">第 {summary.handId} 手</span>
-                    <span className="hl-pot">底池 {money(summary.potTotal)}</span>
+                    <span className="hl-no">{t(`第 ${summary.handId} 手`, `Hand #${summary.handId}`)}</span>
+                    <span className="hl-pot">{t("底池")} {money(summary.potTotal)}</span>
                   </span>
                   <span className="hl-board">
-                    {summary.board.length > 0 ? summary.board.map(displayCard).join(" ") : "翻前结束"}
+                    {summary.board.length > 0 ? summary.board.map(displayCard).join(" ") : t("翻前结束")}
                   </span>
                   <span className="hl-win">
                     {summary.winners.map((winner) => `${winner.name} +${money(winner.amount)}`).join("、")}
@@ -1370,37 +1398,41 @@ function TableScreen({
         <div className="sidebar-foot">
           {llm ? <LlmActivity status={llm} onUpdate={onLlm} /> : null}
           <div className="foot-row">
-            <span>大模型</span>
+            <span>{t("大模型")}</span>
             <strong className={llm?.enabled ? "on" : undefined}>
-              {llm?.enabled ? llm.model : "未接入 · 本地决策"}
+              {llm?.enabled ? llm.model : t("未接入 · 本地决策")}
             </strong>
           </div>
           <div className="foot-row">
-            <span>房间码</span>
+            <span>{t("房间码")}</span>
             <strong>{view.roomCode}</strong>
           </div>
           <div className="foot-row">
-            <span>盲注</span>
+            <span>{t("盲注")}</span>
             <strong>
               {view.smallBlind}/{view.bigBlind}
-              {view.settings.level > 1 ? ` · 第 ${view.settings.level} 级` : ""}
+              {view.settings.level > 1 ? t(` · 第 ${view.settings.level} 级`, ` · Level ${view.settings.level}`) : ""}
             </strong>
           </div>
           <div className="foot-row">
-            <span>你的位置</span>
-            <strong>{heroSeated ? `${heroSeat + 1} 号位` : "旁观"}</strong>
+            <span>{t("你的位置")}</span>
+            <strong>{heroSeated ? t(`${heroSeat + 1} 号位`, `Seat ${heroSeat + 1}`) : t("旁观")}</strong>
           </div>
         </div>
       </aside>
 
       <footer className="action-dock">
+        {view.paused ? <p className="presence-note" role="status">{t("没有在线真人玩家入座，牌局已暂停。", "No human player is online and seated. Play is paused.")}</p> : null}
+        {hero && hero.pendingBuyIn > 0 ? <p className="presence-note" role="status">{t(`待到账买入 ${money(hero.pendingBuyIn)} · 本手结算后到账`, `Pending buy-in ${money(hero.pendingBuyIn)} · Arrives after this hand`)}</p> : null}
+        {hero?.leaving ? <p className="presence-note">{t("本手结束后离座", "Standing up after this hand")}</p> : null}
         {heroSeated && view.seats[heroSeat]?.hole?.length ? (
           <div className="mobile-hand">
             <div className="mobile-hand-cards">
               {view.seats[heroSeat]!.hole!.map((card) => <Card key={card} card={card} size="sm" />)}
             </div>
             <div>
-              <span>你的手牌{view.seats[heroSeat]?.folded ? " · 已弃牌" : ""}</span>
+              {hero?.handCategory != null ? <span className="seat-hand">{handLabel(hero.handCategory, language)}</span> : null}
+              <span>{t("你的手牌")}{view.seats[heroSeat]?.folded ? t(" · 已弃牌") : ""}</span>
               <strong>{money(heroStack)} <small>{(heroStack / view.bigBlind).toFixed(1)} BB</small></strong>
             </div>
           </div>
@@ -1408,7 +1440,9 @@ function TableScreen({
         {view.result ? (
           <div className="result">
             <div className="result-head">
-              <strong>{view.result.reason === "fold" ? "其余玩家弃牌" : "摊牌"}</strong>
+              <strong>{view.result.reason === "fold" ? t("其余玩家弃牌") : t("摊牌")}</strong>
+              {view.canShowCards ? <button type="button" className="show-cards" disabled={status !== "open"} onClick={() => onSend({ t: "showCards", handId: view.handId })}>{t("亮出底牌", "Show cards")}</button> : null}
+              {view.cardsShown ? <span className="hint">{t("底牌已公开", "Cards shown")}</span> : null}
               <span className="net">
                 {view.seats.map((seat) => {
                   const change = view.result?.netChange[seat.index] ?? 0;
@@ -1431,7 +1465,7 @@ function TableScreen({
                       .map((card) => `${displayRank(card[0]!)}${SUIT_SYMBOLS[card[1]!.toLowerCase()] ?? ""}`)
                       .join(" ")}
                   </span>
-                  <em>{handNameZh(entry.category, entry.ranks)}</em>
+                  <em>{handLabel(entry.category, language, entry.ranks)}</em>
                 </li>
               ))}
             </ul>
@@ -1439,58 +1473,45 @@ function TableScreen({
         ) : null}
 
         <fieldset className="dock-row" disabled={status !== "open"}>
-          <ChatBox chat={chat} onSend={(text) => onSend({ t: "chat", text })} />
+          <ChatBox chat={chat} compact={felt.compact} onSend={(text) => onSend({ t: "chat", text })} />
 
           <div className="dock-actions">
             {view.canStartHand ? (
               <button type="button" className="primary start" onClick={() => onSend({ t: "startHand" })}>
-                开始下一手
+                {t("开始下一手")}
               </button>
             ) : null}
             {view.canStartHand && nextHandCountdown !== null ? (
-              <span className="hint">{nextHandCountdown} 秒后自动开始</span>
+              <span className="hint">{t(`${nextHandCountdown} 秒后自动开始`, `Next deal in ${nextHandCountdown}s`)}</span>
             ) : null}
 
-            {heroSeated && heroStack === 0 && view.street === "complete" ? (
-              view.settings.mode === "cash" ? (
-                <>
-                  <label className="buyin" title="重新买入的筹码">
-                    <span>$</span>
-                    <input
-                      type="number"
-                      min={20}
-                      step={10}
-                      value={rebuyAmount}
-                      onChange={(event) => setRebuyAmount(Math.max(0, Math.floor(Number(event.target.value) || 0)))}
-                      aria-label="重新买入的筹码"
-                    />
-                  </label>
-                  <button type="button" className="primary" onClick={() => onSend({ t: "rebuy", buyIn: rebuyAmount })}>
-                    重新买入
-                  </button>
-                </>
-              ) : (
-                <span className="hint">你在锦标赛出局了，可以留下来观战。</span>
-              )
-            ) : null}
+            {heroSeated && heroStack === 0 && view.settings.mode === "tournament" ? <span className="hint">{t("你在锦标赛出局了，可以留下来观战。")}</span> : null}
 
-            {!heroSeated ? <span className="hint">你正在观战 · 选择一个空位入座</span> : null}
+            {!heroSeated ? <span className="hint">{t("你正在观战 · 选择一个空位入座")}</span> : null}
 
             {view.legal ? (
               <ActionBar view={view} onAction={onSend} countdown={countdown} />
             ) : view.toActIndex !== null && view.street !== "complete" ? (
               <div className="waiting-turn" role="status">
                 <span className="thinking-dots" aria-hidden="true"><i /><i /><i /></span>
-                <div><strong>{view.seats[view.toActIndex]?.name ?? "Opponent"} is {view.seats[view.toActIndex]?.isBot ? "thinking" : "acting"}…</strong>
-                  <span>{countdown !== null ? `${countdown}s remaining` : "Waiting for the next move."}</span></div>
+                <div><strong>{view.seats[view.toActIndex]?.name ?? "Opponent"} · {view.seats[view.toActIndex]?.isBot ? t("思考中…", "Thinking…") : t("行动中…", "Acting…")}</strong>
+                  <span>{countdown !== null ? t(`剩余 ${countdown} 秒`, `${countdown}s remaining`) : t("等待下一步行动。")}</span></div>
               </div>
             ) : (
-              view.handId > 0 ? <span className="hint">{streetLabelZh(view.street)}</span> : null
+              view.handId > 0 ? <span className="hint">{streetLabel(view.street, language)}</span> : null
             )}
           </div>
         </fieldset>
       </footer>
 
+      {buyInOpen && hero ? <BuyInDialog view={view} onSend={onSend} onClose={() => setBuyInOpen(false)} /> : null}
+      {botsOpen && view.isHost ? <BotManager view={view} personas={personas} onSend={onSend} onClose={() => setBotsOpen(false)} /> : null}
+      {felt.compact && selectedSeat !== null && !view.seats[selectedSeat]?.playerId ? <Dialog title={t(`空位 ${selectedSeat + 1}`, `Open seat ${selectedSeat + 1}`)} onClose={() => setSelectedSeat(null)}>
+        <SeatPicker key={selectedSeat} index={selectedSeat} defaultBuyIn={view.settings.startingStack} minBuyIn={Math.max(20, view.bigBlind * 2)}
+          personas={personas.filter((persona) => !takenPersonas.has(persona.id))} canManage={view.isHost} canSit={!heroSeated}
+          onSit={(seat, buyIn) => { onSend({ t: "sit", seat, buyIn }); setSelectedSeat(null); }}
+          onAddBot={(seat, persona, buyIn) => { onSend({ t: "addBot", seat, persona, buyIn }); setSelectedSeat(null); }} />
+      </Dialog> : null}
       {settingsOpen ? (
         <SettingsDialog
           view={view}
@@ -1520,6 +1541,7 @@ function LlmDialog({
   onClose: () => void;
   onSaved: (next: LlmStatus) => void;
 }): ReactElement {
+  const { t, language } = useI18n();
   const [apiKey, setApiKey] = useState("");
   const [baseUrl, setBaseUrl] = useState(status.baseUrl ?? "");
   const [model, setModel] = useState(status.model ?? "");
@@ -1543,36 +1565,35 @@ function LlmDialog({
     })
       .then(async (response) => {
         const payload = (await response.json()) as LlmStatus & { error?: string };
-        if (!response.ok) throw new Error(payload.error ?? "保存失败");
+        if (!response.ok) throw new Error(payload.error ?? t("保存失败"));
         onSaved(payload);
         onClose();
       })
-      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "保存失败"))
+      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : t("保存失败")))
       .finally(() => setBusy(false));
   };
 
   return (
     <div className="llm-overlay" onClick={onClose}>
       <div className="llm-dialog" onClick={(event) => event.stopPropagation()}>
-        <h2>大模型配置</h2>
+        <h2>{t("大模型配置")}</h2>
         <p className="llm-note">
-          只在这台机器上可用（服务器所在的那台）。填了就写进项目根目录的 <code>.env</code>，
-          重启也在；不填就让机器人只用本地蒙特卡洛决策，一分钱不花。
+          {t("设置保存在服务器本机，API Key 不会发给浏览器。配置后每次机器人行动都会调用模型，失败时使用本地策略。", "Settings stay on the server; the API key is never sent to browsers. Every bot action uses the configured model, with a local fallback on failure.")}
         </p>
 
         <label className="llm-field">
-          <span>API Key{status.enabled ? "（已配置，留空则不改）" : ""}</span>
+          <span>API Key{status.enabled ? t("（已配置，留空则不改）", " (configured; blank keeps current key)") : ""}</span>
           <input
             type="password"
             value={apiKey}
-            placeholder={status.enabled ? "保持原样" : "sk-..."}
+            placeholder={status.enabled ? t("保持原样") : "sk-..."}
             onChange={(event) => setApiKey(event.target.value)}
             autoComplete="off"
           />
         </label>
 
         <label className="llm-field">
-          <span>接口地址（留空 = 默认）</span>
+          <span>{t("接口地址（留空 = 默认）")}</span>
           <input
             value={baseUrl}
             placeholder="https://api.deepseek.com"
@@ -1581,27 +1602,27 @@ function LlmDialog({
         </label>
 
         <label className="llm-field">
-          <span>模型名（留空 = 默认）</span>
+          <span>{t("模型名（留空 = 默认）")}</span>
           <input value={model} placeholder="deepseek-chat" onChange={(event) => setModel(event.target.value)} />
         </label>
 
         <p className="llm-note">
-          任何兼容 OpenAI <code>/chat/completions</code> 的服务都行：OpenAI、月之暗面、本地 Ollama 都可以。
+          {t("支持兼容 OpenAI /chat/completions 的服务。", "Supports OpenAI-compatible /chat/completions endpoints.")}
         </p>
 
-        {error ? <p className="llm-error">{error}</p> : null}
+        {error ? <p className="llm-error">{t(error)}</p> : null}
 
         <div className="llm-actions">
           <button type="button" onClick={onClose} disabled={busy}>
-            取消
+            {t("取消")}
           </button>
           {status.enabled ? (
             <button type="button" className="danger" onClick={() => submit(true)} disabled={busy}>
-              关闭大模型
+              {t("关闭大模型")}
             </button>
           ) : null}
           <button type="button" className="primary" onClick={() => submit(false)} disabled={busy}>
-            保存
+            {t("保存")}
           </button>
         </div>
       </div>
@@ -1632,6 +1653,7 @@ function Lobby({
   onRetry: () => void;
   onCancel: () => void;
 }): ReactElement {
+  const { t, language } = useI18n();
   const [llmOpen, setLlmOpen] = useState(false);
   const [name, setName] = useState(() => localStorage.getItem(NAME_KEY) ?? "");
   const [room, setRoom] = useState(() => (new URLSearchParams(window.location.search).get("room") ?? "").toUpperCase());
@@ -1650,34 +1672,35 @@ function Lobby({
   return (
     <div className="lobby">
       <header className="lobby-intro">
-        <div className="lobby-brand"><span aria-hidden="true">♠</span> 德州扑克 <small>NPC 牌桌</small></div>
-        <span className="eyebrow">A SEAT FOR EVERY PERSONALITY</span>
-        <h1>牌桌已备好。<br /><em>就等你入座。</em></h1>
-        <p>约上朋友，或会会五位个性鲜明的对手。<br />从一手好牌，开始今晚的故事。</p>
+        <LanguageSwitch />
+        <div className="lobby-brand"><span aria-hidden="true">♠</span> {t("德州扑克")} <small>{t("NPC 牌桌")}</small></div>
+        <span className="eyebrow">{t("A SEAT FOR EVERY PERSONALITY")}</span>
+        <h1>{t("牌桌已备好。", "The table is set.")}<br /><em>{t("就等你入座。", "Your seat is waiting.")}</em></h1>
+        <p>{t("约上朋友，或会会五位个性鲜明的对手。", "Invite friends or face five distinct opponents.")}<br />{t("从一手好牌，开始今晚的故事。", "Your next good story starts with a hand.")}</p>
         <div className="lobby-facts">
-          <span><strong>2–9</strong> 人同桌</span>
-          <span><strong>5</strong> 种对手</span>
-          <span><strong>∞</strong> 种可能</span>
+          <span><strong>2–9</strong> {t("人同桌", "players")}</span>
+          <span><strong>5</strong> {t("种对手", "personalities")}</span>
+          <span><strong>∞</strong> {t("种可能", "possibilities")}</span>
         </div>
       </header>
       <form className="lobby-card" onSubmit={submit}>
         <div className="lobby-card-head">
-          <span className="eyebrow">TAKE YOUR SEAT</span>
-          <h2>来一局？</h2>
-          <p className="lobby-sub">一个昵称，就能上桌。</p>
+          <span className="eyebrow">{t("TAKE YOUR SEAT")}</span>
+          <h2>{t("来一局？")}</h2>
+          <p className="lobby-sub">{t("一个昵称，就能上桌。")}</p>
         </div>
-        <div className="lobby-tabs" aria-label="开桌方式">
-          <button type="button" aria-pressed={mode === "create"} onClick={() => setMode("create")}>创建房间</button>
-          <button type="button" aria-pressed={mode === "join"} onClick={() => setMode("join")}>加入朋友</button>
+        <div className="lobby-tabs" aria-label={t("开桌方式")}>
+          <button type="button" aria-pressed={mode === "create"} onClick={() => setMode("create")}>{t("创建房间")}</button>
+          <button type="button" aria-pressed={mode === "join"} onClick={() => setMode("join")}>{t("加入朋友")}</button>
         </div>
 
         <label>
-          <span>你的昵称</span>
-          <input value={name} onChange={(event) => setName(event.target.value)} maxLength={16} placeholder="牌桌上怎么称呼你？" autoComplete="nickname" required autoFocus />
+          <span>{t("你的昵称")}</span>
+          <input value={name} onChange={(event) => setName(event.target.value)} maxLength={16} placeholder={t("牌桌上怎么称呼你？")} autoComplete="nickname" required autoFocus />
         </label>
 
         {mode === "join" ? <label>
-          <span>朋友的房间码</span>
+          <span>{t("朋友的房间码")}</span>
           <input
             value={room}
             onChange={(event) => setRoom(event.target.value.toUpperCase())}
@@ -1689,29 +1712,29 @@ function Lobby({
             placeholder="ABCD"
             className="code-input"
           />
-        </label> : <p className="create-note">创建后可复制邀请链接，也可以直接和机器人练习。</p>}
+        </label> : <p className="create-note">{t("创建后可复制邀请链接，也可以直接和机器人练习。")}</p>}
 
         {serviceState === "error" ? <div className="service-error" role="alert">
-          <strong>游戏服务未连接</strong>
-          <p>暂时无法创建或加入房间，请稍后重试。</p>
-          <details><summary>给部署者的诊断</summary>
-            <p>请启动 Node 游戏服务，并转发 API 和 WebSocket 请求。</p>
+          <strong>{t("游戏服务未连接")}</strong>
+          <p>{t("暂时无法创建或加入房间，请稍后重试。")}</p>
+          <details><summary>{t("给部署者的诊断")}</summary>
+            <p>{t("请启动 Node 游戏服务，并转发 API 和 WebSocket 请求。")}</p>
             <code>{serviceError}</code>
           </details>
-          <button type="button" className="ghost" onClick={onRetry}>重新检查</button>
-        </div> : serviceState === "loading" ? <p className="fine-print" role="status">正在检查游戏服务…</p> : null}
-        {connectionError ? <p className="llm-error" role="alert">{connectionError}</p> : null}
+          <button type="button" className="ghost" onClick={onRetry}>{t("重新检查")}</button>
+        </div> : serviceState === "loading" ? <p className="fine-print" role="status">{t("正在检查游戏服务…")}</p> : null}
+        {connectionError ? <p className="llm-error" role="alert">{t(connectionError)}</p> : null}
         <button className="primary lobby-submit" type="submit" disabled={name.trim().length === 0 || connecting || serviceState !== "ready"}>
-          {connecting ? "正在连接…" : mode === "join" ? "加入房间" : "创建房间"}<span aria-hidden="true">↗</span>
+          {connecting ? t("正在连接…") : mode === "join" ? t("加入房间") : t("创建房间")}<span aria-hidden="true">↗</span>
         </button>
-        {connecting ? <button className="ghost" type="button" onClick={onCancel}>取消连接</button> : null}
-        <span className="lobby-card-foot">现金局 / 锦标赛 · 仅使用虚拟筹码</span>
+        {connecting ? <button className="ghost" type="button" onClick={onCancel}>{t("取消连接")}</button> : null}
+        <span className="lobby-card-foot">{t("现金局 / 锦标赛 · 仅使用虚拟筹码")}</span>
       </form>
 
       <div className="persona-gallery">
         <div className="gallery-heading">
-          <div><span className="eyebrow">MEET THE TABLE</span><h2>五种个性，同一张牌桌。</h2></div>
-          <span className="gallery-note">你会遇到怎样的对手？</span>
+          <div><span className="eyebrow">{t("MEET THE TABLE")}</span><h2>{t("五种个性，同一张牌桌。")}</h2></div>
+          <span className="gallery-note">{t("你会遇到怎样的对手？")}</span>
         </div>
         {personas.length > 0 ? <ul>
           {personas.map((persona) => (
@@ -1720,23 +1743,23 @@ function Lobby({
                 {persona.name.slice(0, 1)}
               </div>
               <strong>{persona.name}</strong>
-              {persona.description ? <span>{persona.description}</span> : null}
+              {persona.description ? <span>{language === "en" ? PERSONA_EN[persona.id] ?? persona.description : persona.description}</span> : null}
             </li>
           ))}
-        </ul> : <p className="fine-print">连接游戏服务后显示全部对手。</p>}
+        </ul> : <p className="fine-print">{t("连接游戏服务后显示全部对手。")}</p>}
         <div className="model-status">
           <span className={`model-dot${llm?.enabled ? " enabled" : ""}`} />
           <p className="fine-print">
           {serviceState !== "ready"
-            ? "游戏服务未连接 · AI 状态暂不可用"
-            : llm === null ? "AI 状态暂不可用，正在重新检查…"
+            ? t("游戏服务未连接 · AI 状态暂不可用")
+            : llm === null ? t("AI 状态暂不可用，正在重新检查…")
             : llm.enabled
-            ? `AI 已配置 · ${llm.model} · 关键决策由大模型参与`
-            : "本地策略机器人 · 管理员配置 API Key 后启用大模型"}
+            ? t(`AI 已配置 · ${llm.model} · 所有决策均由大模型参与`, `AI configured · ${llm.model} · Every action uses the model`)
+            : t("本地策略机器人 · 管理员配置 API Key 后启用大模型")}
           </p>
         {llm?.configurable ? (
           <button type="button" className="ghost llm-open" onClick={() => setLlmOpen(true)}>
-            {llm.enabled ? "修改大模型配置" : "配置大模型"}
+            {llm.enabled ? t("修改大模型配置") : t("配置大模型")}
           </button>
         ) : null}
         </div>
@@ -1749,6 +1772,7 @@ function Lobby({
 }
 
 export function App(): ReactElement {
+  const { t, language } = useI18n();
   const game = useGame();
   const [personas, setPersonas] = useState<PersonaInfo[]>([]);
   const [llm, setLlm] = useState<LlmStatus | null>(null);
@@ -1793,7 +1817,7 @@ export function App(): ReactElement {
       readBackendJson<ServerConfig>("/api/config", controller.signal),
     ]).then(([payload, config]) => {
       if (!Array.isArray(payload.personas) || payload.personas.length === 0 || typeof payload.llm?.enabled !== "boolean" || !config.bounds) {
-        throw new Error("游戏服务配置数据不完整，请检查部署版本");
+        throw new Error(t("游戏服务配置数据不完整，请检查部署版本"));
       }
       if (!active) return;
       setPersonas(payload.personas);
@@ -1805,7 +1829,7 @@ export function App(): ReactElement {
       setPersonas([]);
       setLlm(null);
       setServiceState("error");
-      setServiceError(error instanceof Error && error.name !== "AbortError" ? error.message : "游戏服务请求超时或不可达");
+      setServiceError(error instanceof Error && error.name !== "AbortError" ? error.message : t("游戏服务请求超时或不可达"));
     }).finally(() => window.clearTimeout(timeout));
     return () => { active = false; controller.abort(); window.clearTimeout(timeout); };
   }, [bootstrapAttempt]);
@@ -1814,7 +1838,7 @@ export function App(): ReactElement {
     <>
       {game.notice ? (
         <div className="notice" role="alert">
-          <span>{game.notice}</span>
+          <span>{t(game.notice)}</span>
           <button type="button" onClick={game.dismissNotice}>
             ✕
           </button>

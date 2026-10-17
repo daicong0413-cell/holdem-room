@@ -28,6 +28,8 @@ export interface SeatView {
   readonly lastAction: string | null;
   /** Only sent for the viewer's own seat; never reveals an opponent's strength. */
   readonly handCategory: number | null;
+  readonly leaving: boolean;
+  readonly pendingBuyIn: number;
 }
 
 export interface AwardView {
@@ -59,6 +61,7 @@ export interface ResultView {
 export interface LogEntryView {
   readonly street: Street;
   readonly text: string;
+  readonly textEn?: string;
 }
 
 /** One archived hand, as shown in the history list. */
@@ -170,13 +173,18 @@ export interface TableView {
   readonly settings: RoomSettingsView;
   /** Archived hands, newest last. Details are fetched on demand. */
   readonly history: HandHistorySummary[];
+  readonly canShowCards: boolean;
+  readonly cardsShown: boolean;
+  readonly paused: boolean;
 }
 
 export type ClientMessage =
   | { readonly t: "hello"; readonly room?: string; readonly name?: string; readonly token?: string }
   | { readonly t: "sit"; readonly seat: number; readonly buyIn?: number }
   | { readonly t: "stand" }
-  | { readonly t: "addBot"; readonly seat: number; readonly persona: string }
+  | { readonly t: "leave" }
+  | { readonly t: "showCards"; readonly handId: number }
+  | { readonly t: "addBot"; readonly seat: number; readonly persona: string; readonly buyIn?: number }
   | { readonly t: "removeBot"; readonly seat: number }
   | { readonly t: "action"; readonly action: PlayerAction }
   | { readonly t: "startHand" }
@@ -192,6 +200,7 @@ export type ServerMessage =
   | { readonly t: "handHistory"; readonly entry: HandHistoryEntry | null }
   | { readonly t: "chat"; readonly from: string; readonly text: string }
   | { readonly t: "error"; readonly message: string }
+  | { readonly t: "roomClosed" }
   | { readonly t: "pong" };
 
 export const STARTING_STACK_DEFAULT = DEFAULT_SETTINGS.startingStack;
@@ -230,9 +239,10 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       };
     }
     case "addBot": {
-      const source = parsed as { seat?: unknown; persona?: unknown };
+      const source = parsed as { seat?: unknown; persona?: unknown; buyIn?: unknown };
       if (!Number.isInteger(source.seat) || typeof source.persona !== "string") return null;
-      return { t: "addBot", seat: source.seat as number, persona: source.persona };
+      if (source.buyIn !== undefined && (typeof source.buyIn !== "number" || !Number.isFinite(source.buyIn))) return null;
+      return { t: "addBot", seat: source.seat as number, persona: source.persona, ...(typeof source.buyIn === "number" ? { buyIn: source.buyIn } : {}) };
     }
     case "removeBot": {
       const source = parsed as { seat?: unknown };
@@ -254,6 +264,10 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       if (!Number.isInteger(source.handId)) return null;
       return { t: "handHistory", handId: source.handId as number };
     }
+    case "showCards": {
+      const source = parsed as { handId?: unknown };
+      return Number.isInteger(source.handId) ? { t: "showCards", handId: source.handId as number } : null;
+    }
     case "chat": {
       const source = parsed as { text?: unknown };
       if (typeof source.text !== "string") return null;
@@ -267,6 +281,7 @@ export function parseClientMessage(raw: string): ClientMessage | null {
       };
     }
     case "stand":
+    case "leave":
     case "startHand":
     case "ping":
       return { t: message.t };
@@ -290,7 +305,7 @@ const NUMERIC_SETTING_KEYS = [
 export function parseSettingsPatch(value: unknown): RoomSettingsPatch | null {
   if (typeof value !== "object" || value === null) return null;
   const source = value as Record<string, unknown>;
-  const patch: Record<string, number | GameMode> = {};
+  const patch: Record<string, number | GameMode | boolean> = {};
 
   for (const key of NUMERIC_SETTING_KEYS) {
     const raw = source[key];
@@ -302,6 +317,10 @@ export function parseSettingsPatch(value: unknown): RoomSettingsPatch | null {
   if (source.mode !== undefined) {
     if (source.mode !== "cash" && source.mode !== "tournament") return null;
     patch.mode = source.mode;
+  }
+  if (source.botAutoRebuy !== undefined) {
+    if (typeof source.botAutoRebuy !== "boolean") return null;
+    patch.botAutoRebuy = source.botAutoRebuy;
   }
 
   return Object.keys(patch).length === 0 ? null : (patch as RoomSettingsPatch);

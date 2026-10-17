@@ -4,7 +4,7 @@
  * Design rule: **the model chooses, it does not calculate.** By the time a
  * request is built, the maths layer has already computed equity, pot odds and a
  * set of concrete legal candidates. The model's entire job is to pick one of
- * them, in character, and optionally say something at the table. That keeps the
+ * them, in character. Bots never post model output in the chat. That keeps the
  * prompt small (~200 tokens), the answer validatable, and the poker correct.
  *
  * The transport is injectable so the whole thing is testable without a network,
@@ -179,7 +179,7 @@ export class DeepSeekAdvisor implements Advisor {
           },
           body,
         },
-        controller.signal,
+        request.context.signal ? AbortSignal.any([controller.signal, request.context.signal]) : controller.signal,
       );
 
       // The provider can bill a response even when its action fails validation.
@@ -278,9 +278,8 @@ export function buildSystemPrompt(persona: AdvisorPersona): string {
     "",
     "要求：",
     "1. 只能从候选动作里选一个，不能发明新的下注额。",
-    "2. 必须以 JSON 回复，格式：{\"choice\": \"<候选 id>\", \"talk\": \"<一句话>\"}",
-    "3. talk 是你对同桌说的话，不超过 20 个字，要符合你的性格（挑衅、闲聊、沉默都行，沉默用空字符串）。",
-    "4. 不要解释赔率，不要输出 JSON 以外的任何内容。",
+    "2. 必须以 JSON 回复，格式：{\"choice\": \"<候选 id>\"}",
+    "3. 不要输出聊天、对白或赔率解释，不要输出 JSON 以外的任何内容。",
   ].join("\n");
 }
 
@@ -303,7 +302,7 @@ export function buildUserPrompt(request: AdvisorRequest): string {
     }`,
     "",
     `本地蒙特卡洛估算你的胜率：${rate(request.equity)}`,
-    `系统判定这是关键决策：${request.reasons.join("；")}`,
+    `行动背景：${request.reasons.join("；")}`,
     "",
     "候选动作：",
     ...request.candidates.map((candidate) => `- ${candidate.id}：${candidate.label}`),

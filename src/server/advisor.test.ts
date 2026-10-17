@@ -327,7 +327,7 @@ test("the model is consulted on a key spot and can override the local answer", a
   assert.deepEqual(action, { type: "fold" }, "the model's choice must be used");
 });
 
-test("a routine spot never reaches the model", async () => {
+test("even a routine preflop check is chosen by the model", async () => {
   const { advisor, calls } = stubAdvisor("fold");
   const brain = makeBotDecider(GTO, seededRng(2), { advisor });
 
@@ -342,8 +342,8 @@ test("a routine spot never reaches the model", async () => {
   });
 
   const action = (await brain(ctx)) as PlayerAction;
-  assert.equal(calls(), 0, "a trivial decision must not cost a token");
-  assert.ok(action.type === "check" || action.type === "raise");
+  assert.equal(calls(), 1);
+  assert.equal(action.type, "fold", "the model's choice overrides the routine local action too");
 });
 
 test("an existing bot uses a newly configured advisor and stops using a disabled one", async () => {
@@ -391,9 +391,9 @@ test("a failing advisor leaves the local decision untouched", async () => {
   assert.ok(["fold", "call"].includes(action.type), `expected a legal local action, got ${action.type}`);
 });
 
-test("the per-hand call budget caps spending", async () => {
+test("every action reaches the model, including more than two in one hand", async () => {
   const { advisor, calls } = stubAdvisor("fold");
-  const brain = makeBotDecider(GTO, seededRng(4), { advisor, maxAdvisorCallsPerHand: 2 });
+  const brain = makeBotDecider(GTO, seededRng(4), { advisor });
   const ctx = context({
     street: "river",
     pot: 150,
@@ -403,17 +403,16 @@ test("the per-hand call budget caps spending", async () => {
   });
 
   for (let attempt = 0; attempt < 5; attempt++) await brain(ctx);
-  assert.equal(calls(), 2, "the third and later key spots in a hand must stay local");
+  assert.equal(calls(), 5);
 
-  // A new hand resets the budget.
+  // A new hand continues to use the model too.
   await brain({ ...ctx, handId: 2 });
-  assert.equal(calls(), 3);
+  assert.equal(calls(), 6);
 });
 
-test("table talk from the model is surfaced exactly once", async () => {
+test("legacy model table talk is ignored and the prompt requests only a decision", async () => {
   const { advisor } = stubAdvisor("fold", "这把你 bluff 我？");
-  const heard: string[] = [];
-  const brain = makeBotDecider(GTO, seededRng(5), { advisor, onTalk: (text) => heard.push(text) });
+  const brain = makeBotDecider(GTO, seededRng(5), { advisor });
   const ctx = context({
     street: "river",
     pot: 150,
@@ -422,8 +421,25 @@ test("table talk from the model is surfaced exactly once", async () => {
     legal: legal({ canCheck: false, canCall: true, toCall: 200, callCost: 200, canRaise: false, minRaiseTo: 0, maxRaiseTo: 200 }),
   });
 
-  await brain(ctx);
-  assert.deepEqual(heard, ["这把你 bluff 我？"]);
+  assert.deepEqual(await brain(ctx), { type: "fold" });
+  assert.ok(!buildSystemPrompt(GTO).includes('"talk"'));
+});
+
+test("room cancellation aborts the model transport immediately", async () => {
+  const controller = new AbortController();
+  let aborted = false;
+  const advisor = new DeepSeekAdvisor({ apiKey: "sk-test" }, async (_request, signal) => {
+    return new Promise((_resolve, reject) => signal.addEventListener("abort", () => {
+      aborted = true;
+      reject(new DOMException("Aborted", "AbortError"));
+    }, { once: true }));
+  });
+  const pending = advisor.review(request({ context: context({ signal: controller.signal }) }));
+  controller.abort();
+  assert.equal(await pending, null);
+  assert.equal(aborted, true);
+  assert.equal(advisor.stats().calls, 1);
+  assert.equal(advisor.stats().failures, 1);
 });
 
 test("candidates are always legal, distinct and ordered from passive to all-in", () => {

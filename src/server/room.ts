@@ -13,7 +13,7 @@
 
 import { randomUUID } from "node:crypto";
 
-import type { Card, Rng } from "../engine/cards.ts";
+import { cardToString, type Card, type Rng } from "../engine/cards.ts";
 import {
   type HandEvent,
   type LegalActions,
@@ -42,6 +42,7 @@ import { buildTableView, buildHandHistoryEntry } from "./view.ts";
 
 /** How many completed hands a room keeps for the history panel. */
 export const MAX_HISTORY_HANDS = 100;
+export const RECONNECT_GRACE_MS = 60_000;
 
 export interface RoomMember {
   readonly playerId: string;
@@ -55,6 +56,8 @@ export interface RoomMember {
   bankroll: number;
   /** Asked to leave during a hand; the seat is released once it settles. */
   leaving: boolean;
+  buyIn: number;
+  pendingBuyIn: number;
 }
 
 export interface RoomSocket {
@@ -78,6 +81,7 @@ export interface BotOpponent {
 
 /** Everything a bot is allowed to know when it decides. */
 export interface BotContext {
+  readonly signal?: AbortSignal;
   readonly seatIndex: number;
   readonly handId: number;
   readonly hole: Card[];
@@ -118,6 +122,7 @@ export const systemTimers: RoomTimers = {
 };
 
 export interface RoomOptions {
+  readonly onClose?: (room: Room) => void;
   readonly code: string;
   readonly personas: readonly PersonaInfo[];
   readonly botDecider: BotDecider;
@@ -189,9 +194,17 @@ export class Room {
   private nextHandTimer: number | null = null;
   private nextHandAt: number | null = null;
   private botTurnPending = false;
+  private botTimer: number | null = null;
+  private botRequest: AbortController | null = null;
+  private reconnectTimer: number | null = null;
+  private readonly onClose?: (room: Room) => void;
+  private closed = false;
+  private everSeatedHuman = false;
+  private readonly revealed = new Map<number, string[]>();
   private lastBotError: string | null = null;
 
   constructor(options: RoomOptions) {
+    this.onClose = options.onClose;
     this.code = options.code;
     this.personas = options.personas;
 
@@ -315,6 +328,7 @@ export class Room {
 
   /** Creates a member, or resumes one from a previously issued token. */
   join(rawName: string, token?: string): RoomMember {
+    this.assertOpen();
     if (token) {
       const existing = this.byToken.get(token);
       if (existing) {
@@ -332,6 +346,8 @@ export class Room {
       personaId: null,
       bankroll: 0,
       leaving: false,
+      buyIn: 0,
+      pendingBuyIn: 0,
     };
     this.members.set(member.playerId, member);
     this.byToken.set(member.token, member);
@@ -341,16 +357,83 @@ export class Room {
   }
 
   attach(playerId: string, socket: RoomSocket): void {
+    this.assertOpen();
     this.sockets.set(playerId, socket);
     const member = this.members.get(playerId);
     if (member) member.connected = true;
-    this.sendStateTo(playerId);
+    this.transferHost();
+    this.afterStateChange();
   }
 
-  detach(playerId: string): void {
+  detach(playerId: string, socket?: RoomSocket): void {
+    if (socket && this.sockets.get(playerId) !== socket) return;
     this.sockets.delete(playerId);
     const member = this.members.get(playerId);
     if (member) member.connected = false;
+    this.transferHost();
+    this.afterStateChange();
+  }
+
+  leave(member: RoomMember): void {
+    if (member.seat !== null) this.stand(member);
+    this.detach(member.playerId);
+    if (!this.hasConnectedPlayer()) this.close();
+  }
+
+  private transferHost(): void {
+    if (this.hostId && this.members.get(this.hostId)?.connected) return;
+    this.hostId = [...this.members.values()].find((member) => !member.isBot && member.connected)?.playerId ?? null;
+  }
+
+  isClosed(): boolean { return this.closed; }
+
+  private assertOpen(): void {
+    if (this.closed) throw new Error("牌桌已关闭");
+  }
+
+  private hasConnectedPlayer(): boolean {
+    return [...this.members.values()].some((member) => !member.isBot && member.connected && member.seat !== null);
+  }
+
+  private cancelPlayTimers(): void {
+    for (const handle of [this.botTimer, this.nextHandTimer, this.actionTimer]) {
+      if (handle !== null) this.timers.clear(handle);
+    }
+    this.botTimer = this.nextHandTimer = this.actionTimer = null;
+    this.nextHandAt = this.actionDeadline = this.actionClockKey = null;
+    this.botTurnPending = false;
+    this.botRequest?.abort();
+    this.botRequest = null;
+  }
+
+  private close(): void {
+    if (this.closed) return;
+    this.closed = true;
+    this.cancelPlayTimers();
+    if (this.reconnectTimer !== null) this.timers.clear(this.reconnectTimer);
+    this.reconnectTimer = null;
+    for (const socket of this.sockets.values()) socket.send({ t: "roomClosed" });
+    this.sockets.clear();
+    this.onClose?.(this);
+  }
+
+  /** Pause immediately on a lost connection; never spend API calls without humans. */
+  private syncPresence(): boolean {
+    const humans = [...this.members.values()].filter((member) => !member.isBot && member.seat !== null);
+    if (this.everSeatedHuman && humans.length === 0 && this.table.seats.some((seat) => this.isBotSeat(seat.index))) {
+      this.close();
+      return false;
+    }
+    if (this.hasConnectedPlayer()) {
+      if (this.reconnectTimer !== null) this.timers.clear(this.reconnectTimer);
+      this.reconnectTimer = null;
+      return true;
+    }
+    this.cancelPlayTimers();
+    if (this.everSeatedHuman && this.reconnectTimer === null) {
+      this.reconnectTimer = this.timers.set(() => this.close(), RECONNECT_GRACE_MS);
+    }
+    return false;
   }
 
   memberOf(playerId: string): RoomMember | null {
@@ -392,9 +475,9 @@ export class Room {
   // ------------------------------------------------------------------- seating
 
   private resolveBuyIn(requested: number | undefined): number {
-    const amount = Math.floor(requested ?? this.settings.startingStack);
+    const amount = requested ?? this.settings.startingStack;
     const bounds = SETTINGS_BOUNDS.startingStack;
-    if (!Number.isFinite(amount) || amount < bounds.min || amount > bounds.max) {
+    if (!Number.isSafeInteger(amount) || amount < bounds.min || amount > bounds.max) {
       throw new Error(`买入必须在 ${bounds.min} 到 ${bounds.max} 之间`);
     }
     const minimum = this.settings.bigBlind * 2;
@@ -403,6 +486,7 @@ export class Room {
   }
 
   sit(member: RoomMember, seatIndex: number, buyIn?: number): void {
+    this.assertOpen();
     const seat = this.table.seats[seatIndex];
     if (!seat) throw new Error(`没有 ${seatIndex} 号座位`);
     if (seat.playerId !== null) throw new Error("该座位已经被占用");
@@ -411,14 +495,18 @@ export class Room {
     const amount = this.resolveBuyIn(buyIn);
     seatPlayer(this.table, seatIndex, { playerId: member.playerId, name: member.name, stack: amount });
     member.seat = seatIndex;
+    member.buyIn = amount;
+    member.pendingBuyIn = 0;
+    this.everSeatedHuman = true;
     this.afterStateChange();
   }
 
-  addBot(seatIndex: number, personaId: string): void {
+  addBot(seatIndex: number, personaId: string, buyIn?: number): void {
+    this.assertOpen();
     const seat = this.table.seats[seatIndex];
     if (!seat) throw new Error(`没有 ${seatIndex} 号座位`);
     if (seat.playerId !== null) throw new Error("该座位已经被占用");
-    if (this.handInProgress()) throw new Error("牌局进行中，无法加入机器人");
+    const amount = this.resolveBuyIn(buyIn);
 
     const persona = this.personas.find((candidate) => candidate.id === personaId);
     if (!persona) throw new Error(`未知的人格：${personaId}`);
@@ -434,8 +522,10 @@ export class Room {
       personaId: persona.id,
       bankroll: 0,
       leaving: false,
+      buyIn: amount,
+      pendingBuyIn: 0,
     };
-    seatPlayer(this.table, seatIndex, { playerId: member.playerId, name: member.name, stack: this.settings.startingStack });
+    seatPlayer(this.table, seatIndex, { playerId: member.playerId, name: member.name, stack: amount });
     this.members.set(member.playerId, member);
     this.byToken.set(member.token, member);
     this.afterStateChange();
@@ -457,7 +547,6 @@ export class Room {
       seat.sittingOut = true;
       if (!member.leaving) {
         member.leaving = true;
-        this.broadcastChat(member.name, "这手打完就离座");
       }
       this.afterStateChange();
       return;
@@ -470,7 +559,8 @@ export class Room {
   private releaseSeat(member: RoomMember): void {
     const seatIndex = member.seat;
     if (seatIndex === null) return;
-    member.bankroll += this.table.seats[seatIndex]!.stack;
+    member.bankroll += this.table.seats[seatIndex]!.stack + member.pendingBuyIn;
+    member.pendingBuyIn = 0;
     removePlayer(this.table, seatIndex);
     member.seat = null;
     member.leaving = false;
@@ -488,16 +578,25 @@ export class Room {
       seat.sittingOut = true;
       if (!member.leaving) {
         member.leaving = true;
-        this.broadcastChat(member.name, "这手打完就离桌");
       }
       this.afterStateChange();
       return;
     }
 
     this.releaseSeat(member);
-    this.broadcastChat(member.name, "离桌");
     this.forgetMember(member);
     this.afterStateChange();
+  }
+
+  addBotBy(playerId: string, seatIndex: number, personaId: string, buyIn?: number): void {
+    if (!this.isHost(playerId)) throw new Error("只有房主可以管理机器人");
+    this.addBot(seatIndex, personaId, buyIn);
+  }
+
+  removeBotBy(playerId: string, seatIndex: number): void {
+    this.assertOpen();
+    if (!this.isHost(playerId)) throw new Error("只有房主可以管理机器人");
+    this.removeBot(seatIndex);
   }
 
   /** Drops a bot's membership entirely, so its persona is free again. */
@@ -513,11 +612,8 @@ export class Room {
       if (!member.leaving || member.seat === null) continue;
       this.releaseSeat(member);
       if (member.isBot) {
-        this.broadcastChat(member.name, "离桌");
         // Gone for good; a human keeps their token so they can sit again later.
         this.forgetMember(member);
-      } else {
-        this.broadcastChat(member.name, "离座");
       }
     }
   }
@@ -533,15 +629,18 @@ export class Room {
   }
 
   canStartHand(): boolean {
-    return !this.handInProgress() && this.fundedSeats().length >= 2;
+    return !this.closed && this.hasConnectedPlayer() && !this.handInProgress() && this.fundedSeats().length >= 2;
   }
 
   startHand(): void {
+    this.assertOpen();
+    if (!this.hasConnectedPlayer()) throw new Error("至少需要一位在线真人玩家入座");
     if (this.handInProgress()) throw new Error("已经有一手牌在进行中");
     if (this.fundedSeats().length < 2) throw new Error("至少需要两位有筹码的玩家");
     for (const seat of this.table.seats) if (seat.playerId !== null && seat.stack > 0) seat.sittingOut = false;
 
     this.escalateBlindsIfDue();
+    this.revealed.clear();
     startHand(this.table, this.rng);
     this.handsAtLevel += 1;
     this.afterStateChange();
@@ -562,6 +661,7 @@ export class Room {
 
   /** Applies a *requested* action from a human, after checking it is their turn. */
   act(playerId: string, action: PlayerAction): void {
+    this.assertOpen();
     const hand = this.table.hand;
     if (!hand || hand.street === "complete") throw new Error("当前没有进行中的牌局");
     if (hand.toActIndex === null) throw new Error("当前无人需要行动");
@@ -615,35 +715,41 @@ export class Room {
   }
 
   private scheduleBotTurn(seatIndex: number): void {
-    if (this.botTurnPending) return;
+    if (this.closed || !this.hasConnectedPlayer() || this.botTurnPending || this.botRequest !== null) return;
     this.botTurnPending = true;
     const street = this.table.hand?.street ?? "preflop";
     const delay = Math.max(0, this.botDelay({ seatIndex, street }));
-    this.timers.set(() => {
+    this.botTimer = this.timers.set(() => {
+      this.botTimer = null;
       this.botTurnPending = false;
       void this.runBotTurn(seatIndex);
     }, delay);
   }
 
   private async runBotTurn(seatIndex: number): Promise<void> {
+    if (this.closed || !this.hasConnectedPlayer()) return;
     const hand = this.table.hand;
     if (!hand || hand.street === "complete" || hand.toActIndex !== seatIndex) return;
     const member = this.memberAtSeat(seatIndex);
     if (!member?.isBot || member.personaId === null) return;
 
     let action: PlayerAction;
+    const request = new AbortController();
+    this.botRequest = request;
     try {
-      action = await this.botDecider(this.buildBotContext(seatIndex), member.personaId);
+      action = await this.botDecider({ ...this.buildBotContext(seatIndex), signal: request.signal }, member.personaId);
     } catch (error) {
       this.lastBotError = error instanceof Error ? error.message : String(error);
       action = this.safeFallback(seatIndex);
+    } finally {
+      if (this.botRequest === request) this.botRequest = null;
     }
 
     // The world may have moved while the brain was thinking (a disconnect, an
     // admin action, a new hand): never apply a stale decision. Re-read the
     // table rather than trusting the narrowing from before the await.
     const current = this.table.hand;
-    if (current === null || current !== hand || current.street === "complete" || current.toActIndex !== seatIndex) return;
+    if (request.signal.aborted || this.closed || !this.hasConnectedPlayer() || current === null || current !== hand || current.street === "complete" || current.toActIndex !== seatIndex) return;
 
     try {
       applyAction(this.table, action);
@@ -673,9 +779,15 @@ export class Room {
   // ------------------------------------------------------------------ outbound
 
   private afterStateChange(): void {
+    if (this.closed) return;
     this.archiveCompletedHand();
+    this.applyPendingBuyIns();
     this.topUpBustedBots();
     this.removeDepartingPlayers();
+    if (!this.syncPresence()) {
+      if (!this.closed) this.broadcast();
+      return;
+    }
     this.scheduleAutoStart();
     this.syncActionTimer();
     this.broadcast();
@@ -788,28 +900,61 @@ export class Room {
     for (const seat of this.table.seats) {
       if (seat.playerId === null || seat.stack > 0) continue;
       const member = this.memberAtSeat(seat.index);
-      if (member?.isBot !== true) continue;
-      seat.stack = this.settings.startingStack;
+      if (member?.isBot !== true || member.leaving) continue;
+      seat.stack = member.buyIn;
       seat.allIn = false;
       seat.sittingOut = false;
-      this.broadcastChat(member.name, `重新买入 ${this.settings.startingStack}`);
     }
   }
 
-  /** Lets a seated player who ran out of chips buy back in between hands. */
+  /** Cash-game additions are queued while a hand is live; pots never change. */
   rebuy(member: RoomMember, buyIn?: number): void {
+    this.assertOpen();
     const seatIndex = member.seat;
     if (seatIndex === null) throw new Error("你还没有入座");
-    if (this.handInProgress()) throw new Error("牌局进行中不能重新买入");
     if (this.settings.mode === "tournament") throw new Error("锦标赛不能重新买入，出局就是出局");
+    if (member.leaving) throw new Error("已申请离座，不能追加买入");
 
     const amount = this.resolveBuyIn(buyIn);
     const seat = this.table.seats[seatIndex]!;
-    if (seat.stack > 0) throw new Error("你的筹码还没用完");
-    seat.stack = amount;
-    seat.allIn = false;
-    seat.sittingOut = false;
+    if (seat.stack + seat.committed + member.pendingBuyIn + amount > SETTINGS_BOUNDS.startingStack.max) {
+      throw new Error(`筹码和待到账买入合计不能超过 ${SETTINGS_BOUNDS.startingStack.max}`);
+    }
+    member.pendingBuyIn += amount;
     this.afterStateChange();
+  }
+
+  private applyPendingBuyIns(): void {
+    if (this.handInProgress()) return;
+    for (const member of this.members.values()) {
+      if (member.seat === null || member.pendingBuyIn <= 0 || member.leaving) continue;
+      const seat = this.table.seats[member.seat]!;
+      seat.stack += member.pendingBuyIn;
+      member.pendingBuyIn = 0;
+      seat.allIn = false;
+      seat.sittingOut = false;
+    }
+  }
+
+  canShowCards(member: RoomMember): boolean {
+    const hand = this.table.hand;
+    const seat = member.seat === null ? null : this.table.seats[member.seat];
+    return !this.closed && hand?.result?.reason === "fold" && seat?.inHand === true && seat.hole.length === 2
+      && hand.result.awards.some((award) => award.winners.includes(seat.index)) && !this.revealed.has(seat.index);
+  }
+
+  showCards(member: RoomMember, handId: number): void {
+    this.assertOpen();
+    if (this.table.hand?.handId !== handId || !this.canShowCards(member)) throw new Error("只能在本手结束后亮出自己的获胜底牌");
+    const seat = this.table.seats[member.seat!]!;
+    const hole = seat.hole.map(cardToString);
+    this.revealed.set(seat.index, hole);
+    // Seats may already have changed since settlement. Update the immutable
+    // archived player, rather than rebuilding a past hand from today's seats.
+    this.handHistory = this.handHistory.map((entry) => entry.handId === handId
+      ? { ...entry, seats: entry.seats.map((player) => player.seatIndex === seat.index ? { ...player, hole } : player) }
+      : entry);
+    this.broadcast();
   }
 
   /**
@@ -864,6 +1009,12 @@ export class Room {
       isHost: this.isHost(member.playerId),
       settings: this.currentSettings(),
       history: this.historySummaries(),
+      reveal: this.revealed,
+      leavingAt: (index) => this.memberAtSeat(index)?.leaving ?? false,
+      pendingBuyInAt: (index) => this.memberAtSeat(index)?.pendingBuyIn ?? 0,
+      canShowCards: this.canShowCards(member),
+      cardsShown: member.seat !== null && this.revealed.has(member.seat),
+      paused: this.everSeatedHuman && !this.hasConnectedPlayer(),
     });
   }
 

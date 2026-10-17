@@ -5,7 +5,7 @@ import { seededRng } from "../engine/cards.ts";
 import { type PlayerAction, legalActions } from "../engine/table.ts";
 import { makeBotDecider, PERSONAS } from "./bots.ts";
 import { DEFAULT_SETTINGS, SETTINGS_BOUNDS, type TableView } from "./protocol.ts";
-import { type BotContext, type RoomTimers, Room } from "./room.ts";
+import { type BotContext, type BotDecider, type RoomTimers, Room, RECONNECT_GRACE_MS } from "./room.ts";
 
 /** Collects scheduled callbacks so the room can be driven synchronously. */
 interface Harness {
@@ -24,7 +24,7 @@ interface Harness {
 /** Bot delays in tests are 0; the action clock is always much larger. */
 const BOT_DELAY_CEILING = 1000;
 
-function makeRoom(options: { seats?: number; actionTimeoutMs?: number; autoStartSeconds?: number; tournament?: boolean } = {}): Harness {
+function makeRoom(options: { seats?: number; actionTimeoutMs?: number; autoStartSeconds?: number; tournament?: boolean; botDecider?: BotDecider } = {}): Harness {
   const scheduled = new Map<number, { fn: () => void; delayMs: number }>();
   let nextHandle = 1;
   let clock = 1_000;
@@ -51,7 +51,7 @@ function makeRoom(options: { seats?: number; actionTimeoutMs?: number; autoStart
       ...(options.tournament === true ? { mode: "tournament" as const, startingStack: 400 } : {}),
     },
     personas: PERSONAS.map((persona) => ({ id: persona.id, name: persona.name })),
-    botDecider: makeBotDecider(PERSONAS[0]!, seededRng(5)),
+    botDecider: options.botDecider ?? makeBotDecider(PERSONAS[0]!, seededRng(5)),
     botDelay: () => 0,
     timers,
     rng: seededRng(1234),
@@ -114,6 +114,20 @@ async function playOut(harness: Harness): Promise<void> {
   }
   throw new Error("hand never finished");
 }
+
+test("the last human standing cancels bot-only auto-deal", async () => {
+  const harness = makeRoom({ autoStartSeconds: 5 });
+  const { room } = harness;
+  const human = room.join("Human");
+  room.sit(human, 0);
+  room.addBot(1, "gto");
+  room.addBot(2, "rock");
+  room.startHand();
+  await playOut(harness);
+  room.stand(human);
+  assert.equal(room.viewFor(human).nextHandAtMs, null, "bots must not keep auto-dealing after every human leaves");
+  assert.equal(room.canStartHand(), false);
+});
 
 test("a token resumes the same member and seat", () => {
   const { room } = makeRoom();
@@ -718,13 +732,15 @@ test("a player who ran out of chips can buy back in between hands", async () => 
   room.addBot(1, "gto");
 
   room.startHand();
-  assert.throws(() => room.rebuy(alice), /牌局进行中/);
+  room.rebuy(alice, 120);
+  assert.equal(room.viewFor(alice).seats[0]!.pendingBuyIn, 120);
   await playOut(harness);
 
   room.table.seats[0]!.stack = 0;
   room.rebuy(alice);
   assert.equal(room.table.seats[0]!.stack, 200);
-  assert.throws(() => room.rebuy(alice), /筹码还没用完/);
+  room.rebuy(alice, 50);
+  assert.equal(room.table.seats[0]!.stack, 250, "a cash player may top up a funded stack");
 });
 
 test("a tournament refuses re-buys outright", async () => {
@@ -920,4 +936,172 @@ test("a tournament stack must be deep enough to play", () => {  const { room } =
   // rule is what rejects it.
   assert.throws(() => room.configure(alice.playerId, { startingStack: 30 }), /20 个大盲/);
   assert.equal(room.viewFor(alice).settings.startingStack, 40, "the refused change leaves it alone");
+});
+
+test("bot buy-ins are customizable, validated and reused by automatic rebuys", async () => {
+  const harness = makeRoom();
+  const { room } = harness;
+  const host = room.join("Host");
+  room.sit(host, 0);
+  assert.throws(() => room.addBotBy(host.playerId, 1, "gto", 0), /买入必须/);
+  assert.throws(() => room.addBotBy(host.playerId, 1, "gto", 20.5), /买入必须/);
+  room.addBotBy(host.playerId, 1, "gto", 750);
+  assert.equal(room.table.seats[1]!.stack, 750);
+  room.startHand();
+  await playOut(harness);
+  room.table.seats[1]!.stack = 0;
+  room.configure(host.playerId, { autoStartSeconds: 0 });
+  assert.equal(room.table.seats[1]!.stack, 750);
+});
+
+test("only the host manages bots, including seating a new bot during a hand", async () => {
+  const harness = makeRoom();
+  const { room } = harness;
+  const host = room.join("Host");
+  const guest = room.join("Guest");
+  room.sit(host, 0);
+  room.sit(guest, 1);
+  assert.throws(() => room.addBotBy(guest.playerId, 2, "rock", 900), /只有房主/);
+  room.startHand();
+  room.addBotBy(host.playerId, 2, "rock", 900);
+  assert.equal(room.table.seats[2]!.inHand, false);
+  assert.throws(() => room.removeBotBy(guest.playerId, 2), /只有房主/);
+  await playOut(harness);
+  room.startHand();
+  assert.equal(room.table.seats[2]!.hole.length, 2);
+  room.removeBotBy(host.playerId, 2);
+  assert.equal(room.memberAtSeat(2)!.leaving, true);
+  await playOut(harness);
+  assert.equal(room.memberAtSeat(2), null);
+});
+
+test("mid-hand additions cannot change an all-in, legal actions, pots or net results", async () => {
+  const harness = makeRoom();
+  const { room } = harness;
+  const alice = room.join("Alice");
+  const bob = room.join("Bob");
+  room.sit(alice, 0, 200);
+  room.sit(bob, 1, 200);
+  room.startHand();
+  const acting = room.memberAtSeat(room.table.hand!.toActIndex!)!;
+  room.act(acting.playerId, { type: "raise", to: 200 });
+  const seat = room.table.seats[acting.seat!]!;
+  const before = { committed: seat.committed, legal: legalActions(room.table) };
+  room.rebuy(acting, 300);
+  assert.equal(seat.stack, 0);
+  assert.equal(seat.allIn, true);
+  assert.equal(seat.committed, before.committed);
+  assert.deepEqual(legalActions(room.table), before.legal);
+  assert.equal(room.viewFor(acting).seats[seat.index]!.pendingBuyIn, 300);
+  assert.throws(() => room.rebuy(acting, 1_000_000), /不能超过/);
+  await playOut(harness);
+  assert.equal(acting.pendingBuyIn, 0);
+  assert.equal(room.table.seats.reduce((sum, current) => sum + current.stack, 0), 700);
+  assert.equal(room.table.hand!.result!.netChange.reduce((sum, net) => sum + net, 0), 0);
+  const funded = seat.stack;
+  room.configure(alice.playerId, { autoStartSeconds: 0 });
+  assert.equal(seat.stack, funded, "queued chips apply exactly once");
+});
+
+test("only the fold winner can voluntarily show, and only for the settled hand", () => {
+  const { room } = makeRoom();
+  const alice = room.join("Alice");
+  const bob = room.join("Bob");
+  const watcher = room.join("Watcher");
+  room.sit(alice, 0);
+  room.sit(bob, 1);
+  room.startHand();
+  assert.throws(() => room.showCards(alice, 1), /只能/);
+  const loser = room.memberAtSeat(room.table.hand!.toActIndex!)!;
+  room.act(loser.playerId, { type: "fold" });
+  const winner = loser === alice ? bob : alice;
+  const handId = room.table.hand!.handId;
+  assert.equal(room.viewFor(watcher).seats[winner.seat!]!.hole, null);
+  assert.equal(room.historyEntry(handId)!.seats.find((seat) => seat.seatIndex === winner.seat)!.hole, null);
+  assert.throws(() => room.showCards(loser, handId), /只能/);
+  assert.throws(() => room.showCards(watcher, handId), /只能/);
+  assert.throws(() => room.showCards(winner, handId - 1), /只能/);
+  assert.equal(room.viewFor(winner).canShowCards, true);
+  room.stand(loser);
+  const replacement = room.join("Replacement");
+  room.sit(replacement, loser === alice ? 0 : 1);
+  room.showCards(winner, handId);
+  const shown = room.viewFor(watcher).seats[winner.seat!]!.hole;
+  assert.equal(shown?.length, 2);
+  assert.deepEqual(room.historyEntry(handId)!.seats.find((seat) => seat.seatIndex === winner.seat)!.hole, shown);
+  assert.equal(room.historyEntry(handId)!.seats.find((seat) => seat.name === loser.name)?.folded, true, "showing cards cannot rewrite the departed opponent in history");
+  assert.equal(room.historyEntry(handId)!.seats.some((seat) => seat.name === replacement.name), false);
+  room.startHand();
+  assert.equal(room.viewFor(watcher).seats[winner.seat!]!.hole, null);
+  assert.equal(room.viewFor(winner).cardsShown, false);
+  assert.throws(() => room.showCards(winner, handId), /只能/);
+});
+
+test("disconnecting every human pauses bots, allows reconnect and eventually closes", async () => {
+  const harness = makeRoom({ autoStartSeconds: 5 });
+  const { room } = harness;
+  const human = room.join("Human");
+  room.sit(human, 0);
+  room.addBot(1, "gto");
+  room.startHand();
+  const events = room.table.hand!.events.length;
+  room.detach(human.playerId);
+  await harness.drain();
+  assert.equal(room.table.hand!.events.length, events);
+  assert.equal(room.viewFor(human).paused, true);
+  assert.equal(room.viewFor(human).actionDeadlineMs, null);
+  room.join("Human", human.token);
+  room.attach(human.playerId, { send: () => undefined });
+  assert.equal(room.viewFor(human).paused, false);
+  assert.equal(room.isHost(human.playerId), true, "the sole reconnecting player must regain room controls");
+  await playOut(harness);
+  room.detach(human.playerId);
+  assert.equal(room.viewFor(human).nextHandAtMs, null);
+  await harness.fireTimer(RECONNECT_GRACE_MS);
+  assert.equal(room.isClosed(), true);
+  assert.throws(() => room.startHand(), /已关闭/);
+});
+
+test("explicitly leaving the last human closes immediately and aborts an in-flight bot", async () => {
+  let finish: (action: PlayerAction) => void = () => undefined;
+  let signal: AbortSignal | undefined;
+  let calls = 0;
+  const harness = makeRoom({ botDecider: (context) => {
+    calls++;
+    signal = context.signal;
+    return new Promise((resolve) => { finish = resolve; });
+  } });
+  const { room } = harness;
+  const human = room.join("Human");
+  room.sit(human, 0);
+  room.addBot(1, "gto");
+  room.startHand();
+  room.act(human.playerId, { type: "call" });
+  await harness.drain();
+  assert.equal(calls, 1);
+  room.configure(human.playerId, { startingStack: 300 });
+  await harness.drain();
+  assert.equal(calls, 1, "unrelated state changes must not launch a second model request");
+  room.leave(human);
+  assert.equal(room.isClosed(), true);
+  assert.equal(signal?.aborted, true);
+  const events = room.table.hand!.events.length;
+  finish({ type: "check" });
+  await harness.drain();
+  assert.equal(room.table.hand!.events.length, events, "a late model response cannot keep a closed table playing");
+});
+
+test("a stale socket cannot disconnect the resumed socket, and hosts transfer on exit", () => {
+  const { room } = makeRoom();
+  const host = room.join("Host");
+  const guest = room.join("Guest");
+  const oldSocket = { send: () => undefined };
+  const newSocket = { send: () => undefined };
+  room.attach(host.playerId, oldSocket);
+  room.attach(host.playerId, newSocket);
+  room.detach(host.playerId, oldSocket);
+  assert.equal(host.connected, true);
+  assert.equal(room.isHost(host.playerId), true);
+  room.detach(host.playerId, newSocket);
+  assert.equal(room.isHost(guest.playerId), true);
 });
