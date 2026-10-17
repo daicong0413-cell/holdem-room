@@ -11,6 +11,8 @@ export interface PotBetInput {
   readonly pot: number;
   /** What it costs to stay in. */
   readonly toCall: number;
+  /** This player's chips already bet on the current street. */
+  readonly streetCommitted: number;
   readonly minRaiseTo: number;
   readonly maxRaiseTo: number;
 }
@@ -18,15 +20,12 @@ export interface PotBetInput {
 /**
  * The raise-to amount for a "half pot" / "pot" preset.
  *
- * Anchored on the call amount, not on the minimum legal raise. With an 8 chip
- * pot and nothing to call, a half-pot bet is 4; anchoring on the minimum raise
- * produced 6, because the minimum raise happens to equal the big blind.
- *
- * Facing a bet it reads as "call, then bet a fraction of the pot", which is the
- * usual convention: call 2 into a pot of 8, half pot on top → raise to 6.
+ * Call first, size the raise against the pot after that call, then include the
+ * player's existing street contribution to produce a raise-to amount. `pot`
+ * includes all live bets, even though the table displays those chips separately.
  */
 export function potBetAmount(input: PotBetInput, fraction: number): number {
-  const raw = input.toCall + Math.round(input.pot * fraction);
+  const raw = input.streetCommitted + input.toCall + Math.round((input.pot + input.toCall) * fraction);
   return Math.min(input.maxRaiseTo, Math.max(input.minRaiseTo, raw));
 }
 

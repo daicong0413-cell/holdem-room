@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { seededRng } from "../engine/cards.ts";
 import { type PlayerAction, legalActions } from "../engine/table.ts";
 import { makeBotDecider, PERSONAS } from "./bots.ts";
-import { DEFAULT_SETTINGS, SETTINGS_BOUNDS } from "./protocol.ts";
+import { DEFAULT_SETTINGS, SETTINGS_BOUNDS, type TableView } from "./protocol.ts";
 import { type BotContext, type RoomTimers, Room } from "./room.ts";
 
 /** Collects scheduled callbacks so the room can be driven synchronously. */
@@ -18,6 +18,7 @@ interface Harness {
   fireTimer(delayMs: number): Promise<void>;
   /** How many long-delay callbacks are armed (0 or 1). */
   armedActionTimers(): number;
+  advanceClock(ms: number): void;
 }
 
 /** Bot delays in tests are 0; the action clock is always much larger. */
@@ -63,6 +64,7 @@ function makeRoom(options: { seats?: number; actionTimeoutMs?: number; autoStart
   return {
     room,
     armedActionTimers: () => longTimers().length,
+    advanceClock(ms: number): void { clock += ms; },
     async drain(): Promise<void> {
       for (let guard = 0; guard < 500; guard++) {
         const due = [...scheduled.entries()].filter(([, entry]) => entry.delayMs <= BOT_DELAY_CEILING);
@@ -305,6 +307,45 @@ test("every persona is a complete, distinct configuration", () => {
 });
 
 // ----------------------------------------------------------- the action clock
+
+test("every broadcast contains the current human deadline and clears it for bots", () => {
+  const harness = makeRoom({ actionTimeoutMs: 30_000 });
+  const { room } = harness;
+  const alice = room.join("Alice");
+  const updates: TableView[] = [];
+  room.attach(alice.playerId, { send: (message) => {
+    if (message.t === "state") updates.push(message.view);
+  } });
+  room.sit(alice, 0);
+  room.addBot(1, "gto");
+  room.startHand();
+  assert.equal(updates.at(-1)!.actionDeadlineMs, 31_000, "the first snapshot must already include the clock");
+  room.act(alice.playerId, { type: "call" });
+  assert.equal(updates.at(-1)!.actionDeadlineMs, null, "a bot must not inherit the human's deadline");
+});
+
+test("unrelated room changes preserve a running clock; changing its duration replaces it", () => {
+  const harness = makeRoom({ actionTimeoutMs: 30_000 });
+  const { room } = harness;
+  const alice = room.join("Alice");
+  const bob = room.join("Bob");
+  room.sit(alice, 0);
+  room.sit(bob, 1);
+  room.startHand();
+  assert.throws(() => room.configure(alice.playerId, { bigBlind: 4, actionTimeoutMs: 20_000 }), /不能修改盲注/);
+  assert.equal(room.currentSettings().bigBlind, 2, "a rejected update must not partially change settings");
+  assert.equal(room.currentSettings().actionTimeoutMs, 30_000);
+  harness.advanceClock(5_000);
+  room.sit(room.join("Carol"), 2);
+  room.configure(alice.playerId, { startingStack: 300 });
+  assert.equal(room.viewFor(alice).actionDeadlineMs, 31_000);
+  assert.equal(harness.armedActionTimers(), 1);
+  room.configure(alice.playerId, { actionTimeoutMs: 10_000 });
+  assert.equal(room.viewFor(alice).actionDeadlineMs, 16_000);
+  harness.advanceClock(2_000);
+  room.act(alice.playerId, { type: "call" });
+  assert.equal(room.viewFor(bob).actionDeadlineMs, 18_000, "the next decision receives a fresh clock");
+});
 
 test("a silent player is folded when their clock runs out", async () => {
   const harness = makeRoom({ actionTimeoutMs: 30_000 });

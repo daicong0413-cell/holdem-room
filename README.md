@@ -5,6 +5,8 @@
 机器人不是一个"通用 AI"，而是**分层决策**：常规牌由本地蒙特卡洛胜率 + 人格参数决定，
 **不花一分钱 token**；只有真正关键的决定才交给大模型。这样既有性格，又能实时响应。
 
+本轮 Web 体验优化与回退说明见 [2026-10-17 优化记录](docs/optimization-20261017.md)。
+
 ## 快速开始
 
 ```bash
@@ -263,7 +265,7 @@ npm run graph     # 重新渲染 docs/git-graph.svg
 npm run dev:server   # 服务端（node --watch，改完自动重启）
 npm run dev:web      # 前端（Vite，端口 5173，自动代理 /ws 和 /api）
 
-npm test             # 全部测试（75 个）
+npm test             # 全部自动化测试
 npm run typecheck    # 类型检查
 npm run demo:hand    # 命令行看一手完整牌局的文字回放
 npm run demo:equity  # 打印常见对阵的胜率表

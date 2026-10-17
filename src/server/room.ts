@@ -184,6 +184,7 @@ export class Room {
   private archivedHandId = -1;
   private actionTimer: number | null = null;
   private actionDeadline: number | null = null;
+  private actionClockKey: string | null = null;
   /** Scheduled deal of the next hand, when auto-start is on. */
   private nextHandTimer: number | null = null;
   private nextHandAt: number | null = null;
@@ -245,8 +246,8 @@ export class Room {
    * Applies a settings change from the host.
    *
    * The guards exist because some settings are baked into the table itself:
-   * seat count needs an empty table, and mode/stack only make sense before the
-   * first hand. Blinds and the action clock can change any time no hand is live.
+   * seat count needs an empty table; mode and blind schedule lock after the
+   * first hand. Blinds change between hands, while the action clock is live.
    */
   configure(playerId: string, patch: RoomSettingsPatch): void {
     if (this.hostId !== playerId) throw new Error("只有房主可以修改房间设置");
@@ -254,6 +255,8 @@ export class Room {
     const previous = this.settings;
     const next: Required<RoomSettingsPatch> = { ...previous, ...patch };
     validateSettings(next);
+    const blindsChanged = next.smallBlind !== previous.smallBlind || next.bigBlind !== previous.bigBlind;
+    if (blindsChanged && this.handInProgress()) throw new Error("牌局进行中不能修改盲注");
 
     const occupied = this.table.seats.some((seat) => seat.playerId !== null);
     if (next.seats !== previous.seats && occupied) throw new Error("有人入座时不能修改座位数");
@@ -288,10 +291,8 @@ export class Room {
       this.handsAtLevel = 0;
     }
 
-    // Blinds only move between hands; setBlinds enforces that too.
-    this.applyBlinds();
-    // A shorter clock has to take effect for the seat that is *currently* waiting.
-    this.armActionTimer(true);
+    // An unchanged blind value must not prevent live changes to the action clock.
+    if (blindsChanged || modeChanged) this.applyBlinds();
     this.afterStateChange();
   }
 
@@ -676,14 +677,13 @@ export class Room {
     this.topUpBustedBots();
     this.removeDepartingPlayers();
     this.scheduleAutoStart();
+    this.syncActionTimer();
     this.broadcast();
     const hand = this.table.hand;
     if (hand && hand.street !== "complete" && hand.toActIndex !== null && this.isBotSeat(hand.toActIndex)) {
-      this.armActionTimer(false);
       this.scheduleBotTurn(hand.toActIndex);
       return;
     }
-    this.armActionTimer(true);
   }
 
   /**
@@ -691,17 +691,22 @@ export class Room {
    * stalling: the table must never be stuck waiting on one seat forever.
    * Bots are excluded — they already act on their own schedule.
    */
-  private armActionTimer(allowHuman: boolean): void {
+  private syncActionTimer(): void {
+    const hand = this.table.hand;
+    const timedHuman = this.settings.actionTimeoutMs > 0 && hand && hand.street !== "complete"
+      && hand.toActIndex !== null && !this.isBotSeat(hand.toActIndex);
+    const key = timedHuman
+      ? `${hand.handId}:${hand.events.length}:${hand.toActIndex}:${this.settings.actionTimeoutMs}`
+      : null;
+    // Seat changes and other unrelated updates must not restart a player's clock.
+    if (key === this.actionClockKey) return;
     if (this.actionTimer !== null) {
       this.timers.clear(this.actionTimer);
       this.actionTimer = null;
       this.actionDeadline = null;
     }
-
-    const hand = this.table.hand;
-    if (!allowHuman || this.settings.actionTimeoutMs <= 0) return;
-    if (!hand || hand.street === "complete" || hand.toActIndex === null) return;
-    if (this.isBotSeat(hand.toActIndex)) return;
+    this.actionClockKey = key;
+    if (key === null) return;
 
     this.actionDeadline = this.timers.now() + this.settings.actionTimeoutMs;
     this.actionTimer = this.timers.set(() => this.onActionTimeout(), this.settings.actionTimeoutMs);
@@ -710,6 +715,7 @@ export class Room {
   private onActionTimeout(): void {
     this.actionTimer = null;
     this.actionDeadline = null;
+    this.actionClockKey = null;
 
     const hand = this.table.hand;
     if (!hand || hand.street === "complete" || hand.toActIndex === null) return;

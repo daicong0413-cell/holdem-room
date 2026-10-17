@@ -158,7 +158,7 @@ function useFeltScale(): { ref: RefObject<HTMLElement | null>; scale: number } {
       };
       if (available.width <= 0 || available.height <= 0) return;
       const fit = Math.min(available.width / FELT_BASE_WIDTH, available.height / FELT_BASE_HEIGHT);
-      setScale(Math.max(0.35, Math.min(fit, 2.4)));
+      setScale(Math.max(0.2, Math.min(fit, 2.4)));
     };
 
     measure();
@@ -249,12 +249,13 @@ function useGame(): {
     socketRef.current = socket;
 
     socket.onopen = () => {
-      setStatus("open");
+      if (socketRef.current !== socket) return;
       const token = localStorage.getItem(TOKEN_KEY);
       socket.send(JSON.stringify({ t: "hello", room, name, ...(token ? { token } : {}) }));
     };
 
     socket.onmessage = (event) => {
+      if (socketRef.current !== socket) return;
       let message: ServerMessage;
       try {
         message = JSON.parse(String(event.data)) as ServerMessage;
@@ -264,6 +265,12 @@ function useGame(): {
       switch (message.t) {
         case "welcome":
           localStorage.setItem(TOKEN_KEY, message.token);
+          if (retry.current) {
+            retry.current.room = message.roomCode;
+            retry.current.name = message.name;
+            retry.current.attempt = 0;
+          }
+          setStatus("open");
           window.history.replaceState(null, "", `?room=${message.roomCode}`);
           break;
         case "state":
@@ -284,6 +291,7 @@ function useGame(): {
     };
 
     socket.onclose = () => {
+      if (socketRef.current !== socket) return;
       socketRef.current = null;
       const state = retry.current;
       if (state === null) {
@@ -308,6 +316,9 @@ function useGame(): {
   const connect = useCallback((room: string, name: string) => {
     const previous = retry.current;
     if (previous?.timer != null) window.clearTimeout(previous.timer);
+    const previousSocket = socketRef.current;
+    socketRef.current = null;
+    previousSocket?.close();
     retry.current = { room, name, attempt: 0, timer: null };
     setStatus("connecting");
     setView(null);
@@ -324,6 +335,15 @@ function useGame(): {
     socketRef.current = null;
     setStatus("idle");
     setView(null);
+  }, []);
+
+  useEffect(() => () => {
+    const state = retry.current;
+    if (state?.timer != null) window.clearTimeout(state.timer);
+    retry.current = null;
+    const socket = socketRef.current;
+    socketRef.current = null;
+    socket?.close();
   }, []);
 
   return {
@@ -375,6 +395,8 @@ function Seat({
   bestCards,
   defaultBuyIn,
   takenPersonas,
+  expanded,
+  onToggle,
   onSit,
   onStand,
   onRemoveBot,
@@ -397,6 +419,8 @@ function Seat({
   bestCards: ReadonlySet<string> | undefined;
   /** Personas already sitting at this table. */
   takenPersonas: ReadonlySet<string>;
+  expanded: boolean;
+  onToggle: () => void;
   /** Pre-filled buy-in for this seat's amount box. */
   defaultBuyIn: number;
   onSit: (seat: number, buyIn: number) => void;
@@ -414,11 +438,26 @@ function Seat({
 
   if (seat.playerId === null) {
     return (
-      <div className="seat is-empty" style={position}>
-        <div className="seat-name">空位 {seat.index + 1}</div>
+      <div className={`seat is-empty${expanded ? " is-selecting" : ""}`} style={position}>
+        <button
+          type="button"
+          className="empty-seat-trigger"
+          onClick={onToggle}
+          aria-expanded={expanded}
+          aria-label={`选择空位 ${seat.index + 1}`}
+        >
+          <span className="empty-seat-plus" aria-hidden="true">+</span>
+          <span>空位 {seat.index + 1}</span>
+        </button>
         {/* Taking a seat is always possible: mid-hand you simply wait for the
             next deal, which the server handles by not dealing you in. */}
-        <div className="seat-actions">
+        {expanded ? (
+          <div className={`seat-picker${parseFloat(position.top) > 60 ? " above" : ""}`}>
+            <div className="seat-picker-head">
+              <strong>空位 {seat.index + 1}</strong>
+              <button type="button" onClick={onToggle} aria-label="收起座位选项">×</button>
+            </div>
+            <div className="seat-actions">
           <label className="buyin" title="上桌筹码">
             <span>$</span>
             <input
@@ -435,7 +474,7 @@ function Seat({
           </button>
           {canManage ? (
             <>
-              <select value={chosen} onChange={(event) => setPersona(event.target.value)} disabled={available.length === 0}>
+              <select aria-label={`空位 ${seat.index + 1} 的对手人格`} value={chosen} onChange={(event) => setPersona(event.target.value)} disabled={available.length === 0}>
                 {available.map((option) => (
                   <option key={option.id} value={option.id}>
                     {option.name}
@@ -447,8 +486,10 @@ function Seat({
               </button>
             </>
           ) : null}
-        </div>
-        {!canManage ? <div className="seat-note">下一手发牌</div> : null}
+            </div>
+            {!canManage ? <div className="seat-note">下一手发牌</div> : null}
+          </div>
+        ) : null}
       </div>
     );
   }
@@ -490,6 +531,7 @@ function Seat({
         <div className="seat-plate">
           <span className="seat-row">
             <span className="seat-name">{seat.name}</span>
+            {seat.isYou ? <span className="you-label">你</span> : null}
             <span className="seat-badges">
             {isButton ? <span className="badge dealer" title="庄家按钮">D</span> : null}
             {isSmallBlind ? <span className="badge blind">SB</span> : null}
@@ -563,10 +605,12 @@ function ActionBar({
 
   if (!legal) return null;
 
-  const clamped = Math.min(Math.max(target, legal.minRaiseTo), legal.maxRaiseTo);
+  const clamped = Math.min(Math.max(Math.round(target), legal.minRaiseTo), legal.maxRaiseTo);
+  const hero = view.seats[legal.seatIndex]!;
+  const totalPot = view.pot + view.seats.reduce((sum, seat) => sum + seat.streetCommitted, 0);
   const potBet = (fraction: number): number =>
     potBetAmount(
-      { pot: view.pot, toCall: legal.toCall, minRaiseTo: legal.minRaiseTo, maxRaiseTo: legal.maxRaiseTo },
+      { pot: totalPot, toCall: legal.toCall, streetCommitted: hero.streetCommitted, minRaiseTo: legal.minRaiseTo, maxRaiseTo: legal.maxRaiseTo },
       fraction,
     );
 
@@ -577,6 +621,11 @@ function ActionBar({
 
   return (
     <div className="action-cluster">
+      <div className="decision-summary">
+        <strong>轮到你行动</strong>
+        <span>{legal.canCheck ? "可以免费过牌" : `跟注 ${money(legal.callCost)} · 跟注后底池 ${money(totalPot + legal.callCost)}`}</span>
+        {countdown !== null ? <span className={`decision-clock${countdown <= 10 ? " urgent" : ""}`}>{countdown}s</span> : null}
+      </div>
       {legal.canRaise ? (
         <div className="raise-row">
           <input
@@ -609,13 +658,14 @@ function ActionBar({
             />
           </label>
           <div className="raise-presets">
-            <button type="button" onClick={() => setTarget(potBet(0.5))}>
+            <button type="button" onClick={() => { setTyped(null); setTarget(potBet(1 / 3)); }}>⅓ 池</button>
+            <button type="button" onClick={() => { setTyped(null); setTarget(potBet(0.5)); }}>
               半池
             </button>
-            <button type="button" onClick={() => setTarget(potBet(1))}>
+            <button type="button" onClick={() => { setTyped(null); setTarget(potBet(1)); }}>
               底池
             </button>
-            <button type="button" onClick={() => setTarget(legal.maxRaiseTo)}>
+            <button type="button" onClick={() => { setTyped(null); setTarget(legal.maxRaiseTo); }}>
               全下
             </button>
           </div>
@@ -658,9 +708,6 @@ function ActionBar({
           </button>
         ) : null}
 
-        {countdown !== null ? (
-          <span className={countdown <= 10 ? "countdown urgent" : "countdown"}>⏱ {countdown}s</span>
-        ) : null}
       </div>
     </div>
   );
@@ -765,7 +812,7 @@ function SettingsDialog({
     <input
       type="number"
       min={bound(boundKey).min}
-      max={bound(boundKey).max}
+      max={key === "actionTimeoutSeconds" ? bound(boundKey).max / 1000 : bound(boundKey).max}
       disabled={locked}
       value={draft[key] as number}
       onChange={(event) => setDraft({ ...draft, [key]: Number(event.target.value) })}
@@ -794,7 +841,7 @@ function SettingsDialog({
       ...(canBlinds && draft.smallBlind !== current.smallBlind ? { smallBlind: draft.smallBlind } : {}),
       ...(canBlinds && draft.bigBlind !== current.bigBlind ? { bigBlind: draft.bigBlind } : {}),
       ...(draft.startingStack !== current.startingStack ? { startingStack: draft.startingStack } : {}),
-      ...(canBlinds && timeoutMs !== current.actionTimeoutMs ? { actionTimeoutMs: timeoutMs } : {}),
+      ...(timeoutMs !== current.actionTimeoutMs ? { actionTimeoutMs: timeoutMs } : {}),
       ...(canMode && draft.mode !== current.mode ? { mode: draft.mode } : {}),
       ...(canMode && draft.blindLevelHands !== current.blindLevelHands ? { blindLevelHands: draft.blindLevelHands } : {}),
       ...(canMode && draft.blindGrowth !== current.blindGrowth ? { blindGrowth: draft.blindGrowth } : {}),
@@ -837,9 +884,9 @@ function SettingsDialog({
             {number("startingStack", "startingStack")}
           </label>
 
-          <label className={handInProgress ? "disabled" : ""}>
-            <span>行动限时（秒，0 = 关闭）{handInProgress ? "（本手结束可改）" : ""}</span>
-            {number("actionTimeoutSeconds", "actionTimeoutMs", handInProgress)}
+          <label>
+            <span>行动限时（秒，0 = 关闭）</span>
+            {number("actionTimeoutSeconds", "actionTimeoutMs")}
           </label>
 
           <label className={handInProgress ? "disabled" : ""}>
@@ -1023,6 +1070,7 @@ function TableScreen({
   const [copied, setCopied] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [tab, setTab] = useState<"live" | "history">("live");
+  const [selectedSeat, setSelectedSeat] = useState<number | null>(null);
   const countdown = useCountdown(view.actionDeadlineMs);
   const nextHandCountdown = useCountdown(view.nextHandAtMs);
   const felt = useFeltScale();
@@ -1042,6 +1090,8 @@ function TableScreen({
   const blinds = useMemo(() => blindSeats(view), [view]);
   const canManageSeats = view.street === "complete" || view.handId === 0;
   const showResult = view.result !== null;
+  const occupiedSeats = view.seats.filter((seat) => seat.playerId !== null).length;
+  const liveBets = view.seats.reduce((sum, seat) => sum + seat.streetCommitted, 0);
   const payoutOf = (seatIndex: number): number => view.result?.payouts[seatIndex] ?? 0;
 
   /** The exact five cards that won, per seat; and the union for the board. */
@@ -1077,6 +1127,23 @@ function TableScreen({
     }
   };
 
+  const quickStart = (): void => {
+    const empty = view.seats.filter((seat) => seat.playerId === null);
+    if (!heroSeated) {
+      const seat = empty.shift();
+      if (!seat) return;
+      onSend({ t: "sit", seat: seat.index, buyIn: view.settings.startingStack });
+    }
+    const opponents = personas.filter((persona) => !takenPersonas.has(persona.id)).slice(0, 3);
+    for (const persona of opponents) {
+      const seat = empty.shift();
+      if (!seat) break;
+      onSend({ t: "addBot", seat: seat.index, persona: persona.id });
+    }
+    setSelectedSeat(null);
+    onSend({ t: "startHand" });
+  };
+
   const modeChip =
     view.settings.mode === "tournament"
       ? `锦标赛 第 ${view.settings.level} 级${
@@ -1087,6 +1154,10 @@ function TableScreen({
   return (
     <div className="room" style={{ "--ui-scale": uiScale } as CSSProperties}>
       <header className="topbar">
+        <div className="table-brand">
+          <span aria-hidden="true">♠</span>
+          <div><strong>德州扑克</strong><small>NPC 牌桌</small></div>
+        </div>
         <div className="room-chip">
           房间 <strong>{view.roomCode}</strong>
         </div>
@@ -1097,9 +1168,6 @@ function TableScreen({
           盲注 <strong>{view.smallBlind}/{view.bigBlind}</strong>
         </div>
         <div className="mode-chip">{modeChip}</div>
-        <div className="pot-chip">
-          底池 <strong>{money(view.pot)}</strong>
-        </div>
         {view.isHost ? (
           <button type="button" onClick={() => setSettingsOpen(true)}>
             ⚙ 房间设置
@@ -1114,22 +1182,48 @@ function TableScreen({
       </header>
 
       <main className="table-area" ref={felt.ref}>
+        <div className="table-caption">
+          <span>{modeChip} · {occupiedSeats}/{seatTotal} 人</span>
+          <span>{view.handId > 0 ? `第 ${view.handId} 手` : "准备开桌"}</span>
+        </div>
         <div
           className="felt-scale"
           style={{ width: FELT_BASE_WIDTH * felt.scale, height: FELT_BASE_HEIGHT * felt.scale }}
         >
           <div className="felt" style={{ transform: `scale(${felt.scale})` }}>
           <div className="table-center">
-            <div className="center-pot">底池 {money(view.pot)}</div>
+            {view.handId === 0 ? (
+              <div className="table-welcome">
+                <span className="welcome-suits" aria-hidden="true">♠ <i>♥</i> ♣ <i>♦</i></span>
+                <h2>好对手，就位。</h2>
+                <p>选一个空位坐下，或直接开始一桌。</p>
+                <button type="button" className="primary" onClick={quickStart} disabled={status !== "open" || (!heroSeated && occupiedSeats === seatTotal)}>
+                  快速开桌 <span aria-hidden="true">↗</span>
+                </button>
+                <small>自动入座 · 最多 3 位机器人陪练</small>
+              </div>
+            ) : <>
+            <div className="street-steps" aria-label={`当前阶段：${streetLabelZh(view.street)}`}>
+              {(["preflop", "flop", "turn", "river"] as const).map((street, index) => (
+                <span key={street} className={view.street === street ? "active" : view.board.length >= index + 2 && index > 0 ? "done" : ""}>{streetLabelZh(street)}</span>
+              ))}
+            </div>
+            <div className="center-pot"><span>底池</span><strong>{money(view.pot)}</strong></div>
             <div className="board">
               {view.board.length === 0 ? (
-                <span className="board-hint">等待发牌</span>
+                Array.from({ length: 5 }, (_, index) => <span className="board-placeholder" key={index} aria-hidden="true">♠</span>)
               ) : (
                 view.board.map((card, index) => (
                   <Card key={`${card}-${index}`} card={card} size="md" isBest={bestOnBoard.has(card)} dealIndex={index} />
                 ))
               )}
             </div>
+            <div className="live-bets">
+              {liveBets > 0
+                ? `本轮下注 ${money(liveBets)} · 总底池 ${money(view.pot + liveBets)}`
+                : view.result ? "本手已结算" : "筹码已收进底池"}
+            </div>
+            </>}
           </div>
 
           {view.seats.map((seat) => {
@@ -1154,10 +1248,12 @@ function TableScreen({
                 bestCards={bestBySeat.get(seat.index)}
                 defaultBuyIn={view.settings.startingStack}
                 takenPersonas={takenPersonas}
-                onSit={(index, amount) => onSend({ t: "sit", seat: index, buyIn: amount })}
+                expanded={selectedSeat === seat.index}
+                onToggle={() => setSelectedSeat(selectedSeat === seat.index ? null : seat.index)}
+                onSit={(index, amount) => { setSelectedSeat(null); onSend({ t: "sit", seat: index, buyIn: amount }); }}
                 onStand={() => onSend({ t: "stand" })}
                 onRemoveBot={(index) => onSend({ t: "removeBot", seat: index })}
-                onAddBot={(index, persona) => onSend({ t: "addBot", seat: index, persona })}
+                onAddBot={(index, persona) => { setSelectedSeat(null); onSend({ t: "addBot", seat: index, persona }); }}
               />
             );
           })}
@@ -1166,6 +1262,7 @@ function TableScreen({
       </main>
 
       <aside className="sidebar">
+        <div className="sidebar-heading"><span className="eyebrow">TABLE NOTES</span><strong>牌局动态</strong></div>
         <div className="sidebar-tabs">
           <button type="button" className={tab === "live" ? "active" : ""} onClick={() => setTab("live")}>
             本手
@@ -1177,6 +1274,7 @@ function TableScreen({
 
         {tab === "live" ? (
           <ol className="log">
+            {view.log.length === 0 ? <li className="log-empty"><span aria-hidden="true">♧</span><strong>故事从第一手开始</strong><p>盲注、下注和结算会记录在这里。</p></li> : null}
             {view.log.map((entry, index) => (
               <li key={index} className={`log-${entry.street}`}>
                 {entry.text}
@@ -1192,13 +1290,13 @@ function TableScreen({
                 <button type="button" onClick={() => onRequestHistory(summary.handId)}>
                   <span className="hl-top">
                     <span className="hl-no">第 {summary.handId} 手</span>
-                    <span className="hl-pot">底池 {summary.potTotal}</span>
+                    <span className="hl-pot">底池 {money(summary.potTotal)}</span>
                   </span>
                   <span className="hl-board">
                     {summary.board.length > 0 ? summary.board.map(displayCard).join(" ") : "翻前结束"}
                   </span>
                   <span className="hl-win">
-                    {summary.winners.map((winner) => `${winner.name} +${winner.amount}`).join("、")}
+                    {summary.winners.map((winner) => `${winner.name} +${money(winner.amount)}`).join("、")}
                   </span>
                 </button>
               </li>
@@ -1221,7 +1319,7 @@ function TableScreen({
           <div className="foot-row">
             <span>盲注</span>
             <strong>
-              {view.settings.smallBlind}/{view.settings.bigBlind}
+              {view.smallBlind}/{view.bigBlind}
               {view.settings.level > 1 ? ` · 第 ${view.settings.level} 级` : ""}
             </strong>
           </div>
@@ -1233,6 +1331,17 @@ function TableScreen({
       </aside>
 
       <footer className="action-dock">
+        {heroSeated && view.seats[heroSeat]?.hole?.length ? (
+          <div className="mobile-hand">
+            <div className="mobile-hand-cards">
+              {view.seats[heroSeat]!.hole!.map((card) => <Card key={card} card={card} size="sm" />)}
+            </div>
+            <div>
+              <span>你的手牌{view.seats[heroSeat]?.folded ? " · 已弃牌" : ""}</span>
+              <strong>{money(heroStack)} <small>{(heroStack / view.bigBlind).toFixed(1)} BB</small></strong>
+            </div>
+          </div>
+        ) : null}
         {view.result ? (
           <div className="result">
             <div className="result-head">
@@ -1266,7 +1375,7 @@ function TableScreen({
           </div>
         ) : null}
 
-        <div className="dock-row">
+        <fieldset className="dock-row" disabled={status !== "open"}>
           <ChatBox chat={chat} onSend={(text) => onSend({ t: "chat", text })} />
 
           <div className="dock-actions">
@@ -1302,20 +1411,17 @@ function TableScreen({
               )
             ) : null}
 
-            {!heroSeated ? <span className="hint">点空位入座，或直接加几个机器人开局。</span> : null}
+            {!heroSeated ? <span className="hint">你正在观战 · 选择一个空位入座</span> : null}
 
             {view.legal ? (
               <ActionBar view={view} onAction={onSend} countdown={countdown} />
             ) : view.toActIndex !== null && view.street !== "complete" ? (
-              <span className="hint">
-                等待 {view.seats[view.toActIndex]?.name ?? "对手"} 行动…
-                {countdown !== null ? ` 剩余 ${countdown} 秒` : ""}
-              </span>
+              <div className="waiting-turn" role="status"><span className="thinking-dots" aria-hidden="true"><i /><i /><i /></span><div><strong>{view.seats[view.toActIndex]?.name ?? "对手"} 正在{view.seats[view.toActIndex]?.isBot ? "思考" : "行动"}</strong><span>{view.seats[view.toActIndex]?.isBot ? "稍等片刻，好牌值得想一想。" : countdown !== null ? `剩余 ${countdown} 秒` : "等待对手决定。"}</span></div></div>
             ) : (
-              <span className="hint">{streetLabelZh(view.street)}</span>
+              view.handId > 0 ? <span className="hint">{streetLabelZh(view.street)}</span> : null
             )}
           </div>
-        </div>
+        </fieldset>
       </footer>
 
       {settingsOpen ? (
@@ -1441,73 +1547,107 @@ function Lobby({
   llm,
   onLlm,
   onJoin,
+  status,
 }: {
   personas: PersonaInfo[];
   llm: LlmStatus | null;
   onLlm: (next: LlmStatus) => void;
   onJoin: (room: string, name: string) => void;
+  status: Status;
 }): ReactElement {
   const [llmOpen, setLlmOpen] = useState(false);
   const [name, setName] = useState(() => localStorage.getItem(NAME_KEY) ?? "");
   const [room, setRoom] = useState(() => (new URLSearchParams(window.location.search).get("room") ?? "").toUpperCase());
+  const [mode, setMode] = useState<"create" | "join">(() => room ? "join" : "create");
+  const connecting = status === "connecting" || status === "closed";
 
   const submit = (event: FormEvent): void => {
     event.preventDefault();
     const trimmed = name.trim();
     if (trimmed.length === 0) return;
     localStorage.setItem(NAME_KEY, trimmed);
-    onJoin(room.trim().toUpperCase(), trimmed);
+    onJoin(mode === "join" ? room.trim().toUpperCase() : "", trimmed);
   };
 
   return (
     <div className="lobby">
+      <header className="lobby-intro">
+        <div className="lobby-brand"><span aria-hidden="true">♠</span> 德州扑克 <small>NPC 牌桌</small></div>
+        <span className="eyebrow">A SEAT FOR EVERY PERSONALITY</span>
+        <h1>牌桌已备好。<br /><em>就等你入座。</em></h1>
+        <p>约上朋友，或会会五位个性鲜明的对手。<br />从一手好牌，开始今晚的故事。</p>
+        <div className="lobby-facts">
+          <span><strong>2–9</strong> 人同桌</span>
+          <span><strong>5</strong> 种对手</span>
+          <span><strong>∞</strong> 种可能</span>
+        </div>
+      </header>
       <form className="lobby-card" onSubmit={submit}>
-        <h1>德州扑克 · NPC 牌桌</h1>
-        <p className="lobby-sub">和朋友用房间码同桌，随时往空位加几个性格不同的机器人。</p>
+        <div className="lobby-card-head">
+          <span className="eyebrow">TAKE YOUR SEAT</span>
+          <h2>来一局？</h2>
+          <p className="lobby-sub">一个昵称，就能上桌。</p>
+        </div>
+        <div className="lobby-tabs" aria-label="开桌方式">
+          <button type="button" aria-pressed={mode === "create"} onClick={() => setMode("create")}>创建房间</button>
+          <button type="button" aria-pressed={mode === "join"} onClick={() => setMode("join")}>加入朋友</button>
+        </div>
 
         <label>
           <span>你的昵称</span>
-          <input value={name} onChange={(event) => setName(event.target.value)} maxLength={16} placeholder="例如：阿伟" autoFocus />
+          <input value={name} onChange={(event) => setName(event.target.value)} maxLength={16} placeholder="牌桌上怎么称呼你？" autoComplete="nickname" required autoFocus />
         </label>
 
-        <label>
-          <span>房间码（留空则创建新房间）</span>
+        {mode === "join" ? <label>
+          <span>朋友的房间码</span>
           <input
             value={room}
             onChange={(event) => setRoom(event.target.value.toUpperCase())}
             maxLength={4}
+            minLength={4}
+            pattern="[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4}"
+            required
+            autoComplete="off"
             placeholder="ABCD"
             className="code-input"
           />
-        </label>
+        </label> : <p className="create-note">创建后可复制邀请链接，也可以直接和机器人练习。</p>}
 
-        <button className="primary" type="submit" disabled={name.trim().length === 0}>
-          {room.trim().length > 0 ? "加入房间" : "创建房间"}
+        <button className="primary lobby-submit" type="submit" disabled={name.trim().length === 0 || connecting}>
+          {connecting ? "正在连接…" : mode === "join" ? "加入房间" : "创建房间"}<span aria-hidden="true">↗</span>
         </button>
+        <span className="lobby-card-foot">现金局 / 锦标赛 · 仅使用虚拟筹码</span>
       </form>
 
       <div className="persona-gallery">
-        <h2>可用机器人人格</h2>
+        <div className="gallery-heading">
+          <div><span className="eyebrow">MEET THE TABLE</span><h2>五种个性，同一张牌桌。</h2></div>
+          <span className="gallery-note">你会遇到怎样的对手？</span>
+        </div>
         <ul>
           {personas.map((persona) => (
             <li key={persona.id}>
+              <div className={`persona-monogram persona-${persona.id}`} aria-hidden="true">
+                {persona.name.slice(0, 1)}
+              </div>
               <strong>{persona.name}</strong>
               {persona.description ? <span>{persona.description}</span> : null}
             </li>
           ))}
         </ul>
-        <p className="fine-print">
+        <div className="model-status">
+          <span className={`model-dot${llm?.enabled ? " enabled" : ""}`} />
+          <p className="fine-print">
           {llm?.enabled
-            ? `大模型已接入：${llm.model} @ ${llm.baseUrl}。常规决策仍在本地完成，只有关键决策点才调用它。`
-            : "大模型未接入，机器人完全靠本地蒙特卡洛 + 人格参数决策，不消耗 token。"}
-        </p>
+            ? `AI 已就绪 · ${llm.model} · 关键决策由大模型参与`
+            : "本地 AI 已就绪 · 不配置大模型也能开始游戏"}
+          </p>
         {llm?.configurable ? (
           <button type="button" className="ghost llm-open" onClick={() => setLlmOpen(true)}>
             {llm.enabled ? "修改大模型配置" : "配置大模型"}
           </button>
-        ) : (
-          <p className="fine-print">大模型配置只能在运行服务器的那台机器上修改。</p>
-        )}
+        ) : null}
+        </div>
       </div>
 
       {llmOpen && llm ? <LlmDialog status={llm} onClose={() => setLlmOpen(false)} onSaved={onLlm} /> : null}
@@ -1586,7 +1726,7 @@ export function App(): ReactElement {
           onRequestHistory={game.requestHistory}
         />
       ) : (
-        <Lobby personas={personas} llm={llm} onLlm={setLlm} onJoin={game.connect} />
+        <Lobby personas={personas} llm={llm} onLlm={setLlm} onJoin={game.connect} status={game.status} />
       )}
 
       {game.historyEntry ? <HistoryDialog entry={game.historyEntry} onClose={game.closeHistory} /> : null}
