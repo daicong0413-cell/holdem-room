@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Texas Hold'em online rooms with LLM-driven personality NPCs",
   "engines": {
-    "node": ">=22.6"
+    "node": ">=24.0.0"
   },
   "scripts": {
     "test": "node --test --test-isolation=none \"src/**/*.test.ts\"",
@@ -17,6 +17,7 @@
     "dev:server": "node --watch src/server/main.ts",
     "dev:web": "vite",
     "build:web": "vite build",
+    "check:deploy": "node scripts/check-deployment.mjs",
     "demo:hand": "node scripts/hand-demo.ts",
     "demo:equity": "node scripts/equity-demo.ts",
     "bench:equity": "node scripts/bench-equity.ts",

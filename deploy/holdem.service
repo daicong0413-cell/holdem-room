@@ -1,0 +1,24 @@
+[Unit]
+Description=Holdem private room server
+After=network.target
+
+[Service]
+Type=simple
+User=holdem
+Group=holdem
+WorkingDirectory=/opt/holdem-room
+# Must point to Node.js 24 or later. Adjust if installed elsewhere.
+ExecStart=/usr/bin/node src/server/main.ts
+Environment=NODE_ENV=production
+Environment=HOST=127.0.0.1
+Environment=PORT=8787
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

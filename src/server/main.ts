@@ -19,6 +19,7 @@ import { fileURLToPath } from "node:url";
 
 import { WebSocket, WebSocketServer } from "ws";
 
+import { canManageLlm } from "./admin-access.ts";
 import { type AdvisorStatsView, DEFAULT_BASE_URL, DEFAULT_MODEL, DeepSeekAdvisor, connectionTestRequest } from "./advisor.ts";
 import { type EnvUpdates, updateEnvFile } from "./env-file.ts";
 import { type BotBrain, PERSONAS, findPersona, makeBotDecider, personaInfos } from "./bots.ts";
@@ -155,16 +156,6 @@ function llmStatus(configurable: boolean): {
     configurable,
     stats: advisor?.stats() ?? null,
   };
-}
-
-/**
- * Only the machine the server runs on counts as the operator. Letting any
- * player change this would let somebody who guessed a room code spend the
- * operator's tokens.
- */
-function isLocalRequest(request: IncomingMessage): boolean {
-  const address = request.socket.remoteAddress ?? "";
-  return address === "127.0.0.1" || address === "::1" || address === "::ffff:127.0.0.1";
 }
 
 async function readJsonBody(request: IncomingMessage, limit = 8192): Promise<unknown> {
@@ -326,19 +317,19 @@ const server = createServer((request, response) => {
   }
 
   if (url.pathname === "/api/personas") {
-    sendJson(response, 200, { personas: personaInfos(), llm: llmStatus(isLocalRequest(request)) });
+    sendJson(response, 200, { personas: personaInfos(), llm: llmStatus(canManageLlm(request)) });
     return;
   }
 
   if (url.pathname === "/api/llm") {
-    const local = isLocalRequest(request);
+    const local = canManageLlm(request);
     if (request.method === "GET") {
       sendJson(response, 200, llmStatus(local));
       return;
     }
     if (request.method === "POST") {
       if (!local) {
-        sendJson(response, 403, { error: "只有运行服务器的那台机器可以修改大模型配置" });
+        sendJson(response, 403, { error: "网页管理已禁用或不是本机直连，请由部署者修改服务器 .env 并重启服务" });
         return;
       }
       void (async () => {
@@ -359,8 +350,8 @@ const server = createServer((request, response) => {
   }
 
   if (url.pathname === "/api/llm/test" && request.method === "POST") {
-    if (!isLocalRequest(request)) {
-      sendJson(response, 403, { error: "只有服务器所在机器可以测试大模型连接" });
+    if (!canManageLlm(request)) {
+      sendJson(response, 403, { error: "此连接不能测试大模型，请由部署者在服务器上检查 API 配置" });
       return;
     }
     const backend = advisor;
@@ -449,7 +440,7 @@ interface Connection {
   missedPings: number;
 }
 
-const wss = new WebSocketServer({ noServer: true });
+const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
 
 server.on("upgrade", (request, socket, head) => {
   const url = new URL(request.url ?? "/", "http://localhost");

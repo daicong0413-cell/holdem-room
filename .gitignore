@@ -14,10 +14,15 @@ config/local.json
 .chrome-check/
 .chrome-demo/
 
-# ±ğµÄ¹¤¾ßÔÚÕâ¸öÄ¿Â¼ÀïÉú³ÉµÄ£¬¸úÆË¿ËÏîÄ¿ÎŞ¹Ø
+# åˆ«çš„å·¥å…·åœ¨è¿™ä¸ªç›®å½•é‡Œç”Ÿæˆçš„ï¼Œè·Ÿæ‰‘å…‹é¡¹ç›®æ— å…³
 .workbuddy/
 miniprogram/
 .wbapp_*.genie
 
-# ÑİÊ¾/²âÊÔÓÃµÄä¯ÀÀÆ÷ÅäÖÃÄ¿Â¼
+# æ¼”ç¤º/æµ‹è¯•ç”¨çš„æµè§ˆå™¨é…ç½®ç›®å½•
 .chrome-*/
+
+# Deployment packages and local server configuration
+releases/
+.env.*
+!.env.example
